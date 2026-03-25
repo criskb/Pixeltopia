@@ -202,6 +202,16 @@ export const initialState = {
   }
 };
 
+function createDefaultState(historyBudgetBytes = getHistoryBudget()) {
+  return {
+    ...initialState,
+    history: {
+      ...initialState.history,
+      budgetBytes: historyBudgetBytes
+    }
+  };
+}
+
 function getHistoryBudget() {
   if (typeof window === 'undefined') {
     return DEFAULT_HISTORY_BUDGET_BYTES;
@@ -541,8 +551,51 @@ export async function persistAutosaveSnapshot(state) {
   await saveToIndexedDb(snapshot);
 }
 
+export function createWorkspacePolishPlan(state) {
+  switch (state.workspaceMode) {
+    case 'draw': {
+      const actions = [];
+      if (!state.wrapPreviewEnabled) {
+        actions.push({ type: 'wrap_preview_toggle' });
+      }
+      if (state.zoomLevel < 12) {
+        actions.push({ type: 'set_zoom', zoom: 12 });
+      }
+      return { actions, message: 'Draw polish applied: wrap preview on, zoom set for detail.' };
+    }
+    case 'animate': {
+      const actions = [];
+      if (!state.project.onionSkin.enabled) {
+        actions.push({ type: 'onion_toggle' });
+      }
+      if (state.project.playback.fps < 12) {
+        actions.push({ type: 'playback_set_fps', fps: 12 });
+      }
+      return { actions, message: 'Animate polish applied: onion skin on, fps floor set to 12.' };
+    }
+    case 'rigging': {
+      const actions = [];
+      if (!state.rigging.enabled) {
+        actions.push({ type: 'rigging_toggle' });
+      }
+      actions.push({ type: 'rigging_set_tool', tool: 'move' });
+      return { actions, message: 'Rig polish applied: rigging enabled and move tool armed.' };
+    }
+    default: {
+      const actions = [];
+      if (!state.lighting.enabled) {
+        actions.push({ type: 'lighting_toggle' });
+      }
+      actions.push({ type: 'lighting_set', updates: { intensity: Math.max(state.lighting.intensity, 0.75) } });
+      return { actions, message: 'Shader polish applied: lighting boosted for preview.' };
+    }
+  }
+}
+
 export function editorReducer(state, action) {
   switch (action.type) {
+    case 'project_reset':
+      return createDefaultState(state.history.budgetBytes);
     case 'hydrate_from_snapshot':
       return action.snapshot ? fromAutosaveSnapshot(action.snapshot) : state;
     case 'history_set_budget': {
@@ -852,13 +905,7 @@ export function editorReducer(state, action) {
 }
 
 export function EditorProvider({ children }) {
-  const [state, dispatch] = useReducer(editorReducer, {
-    ...initialState,
-    history: {
-      ...initialState.history,
-      budgetBytes: getHistoryBudget()
-    }
-  });
+  const [state, dispatch] = useReducer(editorReducer, createDefaultState());
 
   useEffect(() => {
     let cancelled = false;
