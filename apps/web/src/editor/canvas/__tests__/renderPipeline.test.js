@@ -50,4 +50,56 @@ describe('render pipeline', () => {
     const output = compositeProjectFrame(project, frame.id);
     expect(px(output)).toEqual([255, 0, 0, 255]);
   });
+
+  it('supports point light mode using light position', () => {
+    const project = createProject({ width: 3, height: 3, frameCount: 1, layerNames: ['Layer'], createPixelBuffer });
+    const layerId = project.layers[0].id;
+    const frame = project.frames[0];
+
+    setPixel(frame.cels[layerId].pixelBuffer, 1, 1, [120, 120, 120, 255]);
+    setPixel(frame.cels[layerId].pixelBuffer, 0, 1, [120, 120, 120, 255]);
+
+    const litNearCenter = renderCanvasBuffer(project, {
+      enabled: true,
+      mode: 'point',
+      position: { x: 1, y: 1 },
+      intensity: 1,
+      ambient: 0.1,
+      color: '#ffffff'
+    });
+
+    const litFarAway = renderCanvasBuffer(project, {
+      enabled: true,
+      mode: 'point',
+      position: { x: 2, y: 2 },
+      intensity: 1,
+      ambient: 0.1,
+      color: '#ffffff'
+    });
+
+    const centerNear = litNearCenter.data[(1 * litNearCenter.width + 1) * 4];
+    const centerFar = litFarAway.data[(1 * litFarAway.width + 1) * 4];
+    expect(centerNear).not.toBe(centerFar);
+  });
+
+  it('applies HDRI tint samples when provided', () => {
+    const project = createProject({ width: 3, height: 3, frameCount: 1, layerNames: ['Layer'], createPixelBuffer });
+    const layerId = project.layers[0].id;
+    const frame = project.frames[0];
+    setPixel(frame.cels[layerId].pixelBuffer, 1, 1, [80, 80, 80, 255]);
+
+    const lit = renderCanvasBuffer(project, {
+      enabled: true,
+      mode: 'global',
+      direction: 20,
+      intensity: 1,
+      ambient: 0.1,
+      color: '#000000',
+      hdriStrength: 1,
+      hdriSamples: [[255, 0, 0], [0, 0, 255]]
+    });
+
+    const pixel = (1 * lit.width + 1) * 4;
+    expect(lit.data[pixel]).not.toBe(lit.data[pixel + 2]);
+  });
 });
