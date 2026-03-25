@@ -1,4 +1,3 @@
-import { PNG } from 'pngjs';
 import { buildFileName, EXPORT_FORMAT, resolveExportSettings, SPRITESHEET_LAYOUT } from './settings.js';
 
 function blendChannels(dst, src, mode) {
@@ -53,12 +52,6 @@ function compositeFrame(project, frame) {
   }
 
   return { width: project.width, height: project.height, data };
-}
-
-function encodePng(buffer) {
-  const png = new PNG({ width: buffer.width, height: buffer.height });
-  png.data = Buffer.from(buffer.data);
-  return PNG.sync.write(png, { colorType: 6, inputHasAlpha: true });
 }
 
 function resolveFrames(project, settings) {
@@ -125,42 +118,61 @@ function buildSpritesheet(buffers, settings) {
   return { width: geometry.width, height: geometry.height, data: output };
 }
 
-export function serializeProjectExport(project, options = {}) {
+function encodePng(buffer) {
+  const canvas = document.createElement('canvas');
+  canvas.width = buffer.width;
+  canvas.height = buffer.height;
+  const ctx = canvas.getContext('2d');
+  const imageData = new ImageData(buffer.data, buffer.width, buffer.height);
+  ctx.putImageData(imageData, 0, 0);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(async (blob) => {
+      if (!blob) {
+        reject(new Error('Failed to encode PNG in browser'));
+        return;
+      }
+
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      resolve(bytes);
+    }, 'image/png');
+  });
+}
+
+export async function serializeProjectExport(project, options = {}) {
   const settings = resolveExportSettings(options);
   const frames = resolveFrames(project, settings);
   const flattenedFrames = frames.map((frame) => compositeFrame(project, frame));
 
   if (settings.format === EXPORT_FORMAT.SINGLE_FRAME_PNG) {
     const frame = flattenedFrames[0];
-    const fileName = `${buildFileName(settings.filenameTemplate, {
-      project: settings.projectName,
-      format: 'png',
-      frameTag: settings.frameTags[0] ?? frames[0]?.id ?? 'frame',
-      frameIndex: 1
-    })}.png`;
-
     return {
-      fileName,
+      fileName: `${buildFileName(settings.filenameTemplate, {
+        project: settings.projectName,
+        format: 'png',
+        frameTag: settings.frameTags[0] ?? frames[0]?.id ?? 'frame',
+        frameIndex: 1
+      })}.png`,
       mimeType: 'image/png',
       width: frame.width,
       height: frame.height,
-      bytes: encodePng(frame)
+      bytes: await encodePng(frame)
     };
   }
 
   const sheet = buildSpritesheet(flattenedFrames, settings);
-  const fileName = `${buildFileName(settings.filenameTemplate, {
-    project: settings.projectName,
-    format: 'spritesheet',
-    frameTag: 'all',
-    frameIndex: 1
-  })}.png`;
-
   return {
-    fileName,
+    fileName: `${buildFileName(settings.filenameTemplate, {
+      project: settings.projectName,
+      format: 'spritesheet',
+      frameTag: 'all',
+      frameIndex: 1
+    })}.png`,
     mimeType: 'image/png',
     width: sheet.width,
     height: sheet.height,
-    bytes: encodePng(sheet)
+    bytes: await encodePng(sheet)
   };
 }
+
+export * from './settings.js';
