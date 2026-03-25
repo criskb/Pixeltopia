@@ -6,6 +6,7 @@ import { createStorageService } from './storage/storage.plugin.js';
 import { createJobsService } from './jobs/jobs.plugin.js';
 import { registerHealthRoute } from './api/health.route.js';
 import { registerV1StatusRoute } from './api/v1/status.route.js';
+import { registerV1ExportRoute } from './api/v1/export.route.js';
 
 export function buildServer() {
   const server = new BackendServer({ logger });
@@ -16,6 +17,7 @@ export function buildServer() {
 
   registerHealthRoute(server);
   registerV1StatusRoute(server);
+  registerV1ExportRoute(server);
 
   return server;
 }
