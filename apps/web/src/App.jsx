@@ -1,10 +1,11 @@
+import CanvasViewport from './editor/canvas/CanvasViewport';
+import { EditorProvider, useEditorDispatch, useEditorState } from './editor/state/EditorStateContext';
+
 const tools = [
   { key: 'pencil', label: 'Pencil', shortcut: 'B' },
   { key: 'eraser', label: 'Eraser', shortcut: 'E' },
   { key: 'fill', label: 'Fill', shortcut: 'G' },
-  { key: 'line', label: 'Line', shortcut: 'L' },
-  { key: 'rect', label: 'Rect', shortcut: 'R' },
-  { key: 'move', label: 'Move', shortcut: 'V' }
+  { key: 'picker', label: 'Picker', shortcut: 'I' }
 ];
 
 const swatches = ['#1D1D1D', '#FFFFFF', '#7C5CFF', '#00C2FF', '#37D67A', '#FFB020', '#FF5D73', '#8B5CF6'];
@@ -17,10 +18,18 @@ const layers = [
 ];
 
 function ToolRail() {
+  const { activeTool } = useEditorState();
+  const dispatch = useEditorDispatch();
+
   return (
     <aside className="tool-rail" aria-label="Tool rail">
-      {tools.map((tool, index) => (
-        <button key={tool.key} className={index === 0 ? 'tool-btn active' : 'tool-btn'} title={`${tool.label} (${tool.shortcut})`}>
+      {tools.map((tool) => (
+        <button
+          key={tool.key}
+          className={tool.key === activeTool ? 'tool-btn active' : 'tool-btn'}
+          title={`${tool.label} (${tool.shortcut})`}
+          onClick={() => dispatch({ type: 'set_active_tool', tool: tool.key })}
+        >
           <span className="tool-name">{tool.label.slice(0, 2).toUpperCase()}</span>
           <span className="shortcut">{tool.shortcut}</span>
         </button>
@@ -30,13 +39,23 @@ function ToolRail() {
 }
 
 function Inspector() {
+  const { currentColor, brushSize, zoomLevel } = useEditorState();
+  const dispatch = useEditorDispatch();
+
   return (
     <aside className="inspector" aria-label="Inspector panels">
       <section className="panel">
         <h2>Palette</h2>
         <div className="swatch-grid">
           {swatches.map((color) => (
-            <button key={color} className="swatch" title={color} aria-label={`Color ${color}`} style={{ background: color }} />
+            <button
+              key={color}
+              className={currentColor === color ? 'swatch selected' : 'swatch'}
+              title={color}
+              aria-label={`Color ${color}`}
+              style={{ background: color }}
+              onClick={() => dispatch({ type: 'set_color', color })}
+            />
           ))}
         </div>
       </section>
@@ -55,13 +74,20 @@ function Inspector() {
 
       <section className="panel">
         <h2>Brush</h2>
-        <div className="control-row">
+        <label className="control-row" htmlFor="brushSize">
           <span>Size</span>
-          <strong>1 px</strong>
-        </div>
+          <input
+            id="brushSize"
+            type="range"
+            min="1"
+            max="8"
+            value={brushSize}
+            onChange={(event) => dispatch({ type: 'set_brush_size', size: Number(event.target.value) })}
+          />
+        </label>
         <div className="control-row">
-          <span>Opacity</span>
-          <strong>100%</strong>
+          <span>Zoom</span>
+          <strong>{zoomLevel * 100}%</strong>
         </div>
       </section>
     </aside>
@@ -86,40 +112,52 @@ function Timeline() {
   );
 }
 
-export default function App() {
-  return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div>
-          <h1>PixelForge</h1>
-          <p className="subhead">Sprite Editor Prototype</p>
-        </div>
-        <div className="topbar-actions">
-          <button>New</button>
-          <button>Open</button>
-          <button className="primary">Export</button>
-        </div>
-      </header>
+function Workspace() {
+  const { activeTool, currentColor, cursor, zoomLevel, width, height } = useEditorState();
 
+  return (
+    <>
       <ToolRail />
 
       <main className="workspace" aria-label="Workspace">
         <div className="canvas-header">
-          <span>sprite_idle.png · 64×64</span>
-          <span>Zoom 400% · Grid On</span>
+          <span>sprite_idle.png · {width}×{height}</span>
+          <span>Zoom {zoomLevel * 100}% · Grid On</span>
         </div>
         <div className="canvas-backdrop">
-          <div className="canvas" role="img" aria-label="Pixel canvas checkerboard preview" />
+          <CanvasViewport />
         </div>
         <div className="statusbar">
-          <span>Tool: Pencil</span>
-          <span>RGBA: 124, 92, 255, 1.00</span>
-          <span>Cursor: 26, 11</span>
+          <span>Tool: {activeTool}</span>
+          <span>Color: {currentColor}</span>
+          <span>Cursor: {cursor.x}, {cursor.y}</span>
         </div>
       </main>
 
       <Inspector />
       <Timeline />
-    </div>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <EditorProvider>
+      <div className="app-shell">
+        <header className="topbar">
+          <div>
+            <h1>PixelForge</h1>
+            <p className="subhead">Sprite Editor Prototype</p>
+          </div>
+          <div className="topbar-actions">
+            <button>New</button>
+            <button>Open</button>
+            <button className="primary">Export</button>
+          </div>
+        </header>
+
+        <Workspace />
+      </div>
+    </EditorProvider>
   );
 }
