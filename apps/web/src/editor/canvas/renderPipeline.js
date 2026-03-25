@@ -1,7 +1,32 @@
 import { createPixelBuffer } from './pixelBuffer';
 import { getOnionFrames } from '@pixelforge/domain';
 
-function blendPixel(dst, src, opacity = 1) {
+function blendChannels(dst, src, mode) {
+  switch (mode) {
+    case 'multiply':
+      return [
+        (src[0] * dst[0]) / 255,
+        (src[1] * dst[1]) / 255,
+        (src[2] * dst[2]) / 255
+      ];
+    case 'screen':
+      return [
+        255 - ((255 - src[0]) * (255 - dst[0])) / 255,
+        255 - ((255 - src[1]) * (255 - dst[1])) / 255,
+        255 - ((255 - src[2]) * (255 - dst[2])) / 255
+      ];
+    case 'add':
+      return [
+        Math.min(255, src[0] + dst[0]),
+        Math.min(255, src[1] + dst[1]),
+        Math.min(255, src[2] + dst[2])
+      ];
+    default:
+      return [src[0], src[1], src[2]];
+  }
+}
+
+function blendPixel(dst, src, opacity = 1, mode = 'normal') {
   const srcAlpha = (src[3] / 255) * opacity;
   if (srcAlpha <= 0) {
     return dst;
@@ -13,10 +38,12 @@ function blendPixel(dst, src, opacity = 1) {
     return [0, 0, 0, 0];
   }
 
+  const blendedRgb = blendChannels(dst, src, mode);
+
   return [
-    Math.round((src[0] * srcAlpha + dst[0] * dstAlpha * (1 - srcAlpha)) / outAlpha),
-    Math.round((src[1] * srcAlpha + dst[1] * dstAlpha * (1 - srcAlpha)) / outAlpha),
-    Math.round((src[2] * srcAlpha + dst[2] * dstAlpha * (1 - srcAlpha)) / outAlpha),
+    Math.round((blendedRgb[0] * srcAlpha + dst[0] * dstAlpha * (1 - srcAlpha)) / outAlpha),
+    Math.round((blendedRgb[1] * srcAlpha + dst[1] * dstAlpha * (1 - srcAlpha)) / outAlpha),
+    Math.round((blendedRgb[2] * srcAlpha + dst[2] * dstAlpha * (1 - srcAlpha)) / outAlpha),
     Math.round(outAlpha * 255)
   ];
 }
@@ -42,7 +69,7 @@ function compositeFrame(frame, layers, width, height, opacity = 1) {
         cel.pixelBuffer.data[i + 2],
         cel.pixelBuffer.data[i + 3]
       ];
-      const blended = blendPixel(dst, src, opacity);
+      const blended = blendPixel(dst, src, opacity * (layer.opacity ?? 1), layer.blendMode ?? 'normal');
       result.data[i] = blended[0];
       result.data[i + 1] = blended[1];
       result.data[i + 2] = blended[2];

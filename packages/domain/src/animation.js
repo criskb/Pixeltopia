@@ -18,8 +18,8 @@ export function createFrame({ duration = 1, cels = {} } = {}) {
   return { id: uid('frame'), duration, cels };
 }
 
-export function createLayer({ name, visible = true, locked = false } = {}) {
-  return { id: uid('layer'), name, visible, locked };
+export function createLayer({ name, visible = true, locked = false, blendMode = 'normal', opacity = 1 } = {}) {
+  return { id: uid('layer'), name, visible, locked, blendMode, opacity };
 }
 
 export function createProject({ width, height, layerNames = ['Line Art', 'Base Colors', 'Background'], frameCount = 4, fps = 12, loopMode = 'loop', createPixelBuffer }) {
@@ -116,6 +116,58 @@ export function toggleLayerLock(project, layerId) {
 
 export function selectLayer(project, layerId) {
   return { ...project, selectedLayerId: layerId };
+}
+
+export function addLayer(project, { name, createPixelBuffer } = {}) {
+  const layerName = name?.trim() || `Layer ${project.layers.length + 1}`;
+  const layer = createLayer({ name: layerName });
+
+  return {
+    ...project,
+    layers: [layer, ...project.layers],
+    selectedLayerId: layer.id,
+    frames: project.frames.map((frame) => ({
+      ...frame,
+      cels: {
+        ...frame.cels,
+        [layer.id]: createCel({ layerId: layer.id, pixelBuffer: createPixelBuffer(project.width, project.height) })
+      }
+    }))
+  };
+}
+
+export function removeLayer(project, layerId = project.selectedLayerId) {
+  if (project.layers.length <= 1) {
+    return project;
+  }
+
+  const layers = project.layers.filter((layer) => layer.id !== layerId);
+  const nextSelected = layers[0]?.id;
+
+  return {
+    ...project,
+    layers,
+    selectedLayerId: layers.some((layer) => layer.id === project.selectedLayerId) ? project.selectedLayerId : nextSelected,
+    frames: project.frames.map((frame) => ({
+      ...frame,
+      cels: Object.fromEntries(Object.entries(frame.cels).filter(([celLayerId]) => celLayerId !== layerId))
+    }))
+  };
+}
+
+export function setLayerBlendMode(project, layerId, blendMode) {
+  return {
+    ...project,
+    layers: project.layers.map((layer) => layer.id === layerId ? { ...layer, blendMode } : layer)
+  };
+}
+
+export function setLayerOpacity(project, layerId, opacity) {
+  const normalizedOpacity = Math.max(0, Math.min(1, opacity));
+  return {
+    ...project,
+    layers: project.layers.map((layer) => layer.id === layerId ? { ...layer, opacity: normalizedOpacity } : layer)
+  };
 }
 
 export function setPlayback(project, updates) {

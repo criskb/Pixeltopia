@@ -1,5 +1,22 @@
 import { buildFileName, EXPORT_FORMAT, resolveExportSettings, SPRITESHEET_LAYOUT } from './settings.js';
 
+function blendChannels(dst, src, mode) {
+  switch (mode) {
+    case 'multiply':
+      return [(src[0] * dst[0]) / 255, (src[1] * dst[1]) / 255, (src[2] * dst[2]) / 255];
+    case 'screen':
+      return [
+        255 - ((255 - src[0]) * (255 - dst[0])) / 255,
+        255 - ((255 - src[1]) * (255 - dst[1])) / 255,
+        255 - ((255 - src[2]) * (255 - dst[2])) / 255
+      ];
+    case 'add':
+      return [Math.min(255, src[0] + dst[0]), Math.min(255, src[1] + dst[1]), Math.min(255, src[2] + dst[2])];
+    default:
+      return [src[0], src[1], src[2]];
+  }
+}
+
 function compositeFrame(project, frame) {
   const data = new Uint8ClampedArray(project.width * project.height * 4);
 
@@ -14,17 +31,22 @@ function compositeFrame(project, frame) {
     }
 
     for (let i = 0; i < data.length; i += 4) {
-      const srcAlpha = cel.pixelBuffer.data[i + 3] / 255;
+      const srcAlpha = (cel.pixelBuffer.data[i + 3] / 255) * (layer.opacity ?? 1);
       if (srcAlpha <= 0) {
         continue;
       }
 
       const dstAlpha = data[i + 3] / 255;
       const outAlpha = srcAlpha + dstAlpha * (1 - srcAlpha);
+      const blended = blendChannels(
+        [data[i], data[i + 1], data[i + 2]],
+        [cel.pixelBuffer.data[i], cel.pixelBuffer.data[i + 1], cel.pixelBuffer.data[i + 2]],
+        layer.blendMode ?? 'normal'
+      );
 
-      data[i] = Math.round((cel.pixelBuffer.data[i] * srcAlpha + data[i] * dstAlpha * (1 - srcAlpha)) / outAlpha);
-      data[i + 1] = Math.round((cel.pixelBuffer.data[i + 1] * srcAlpha + data[i + 1] * dstAlpha * (1 - srcAlpha)) / outAlpha);
-      data[i + 2] = Math.round((cel.pixelBuffer.data[i + 2] * srcAlpha + data[i + 2] * dstAlpha * (1 - srcAlpha)) / outAlpha);
+      data[i] = Math.round((blended[0] * srcAlpha + data[i] * dstAlpha * (1 - srcAlpha)) / outAlpha);
+      data[i + 1] = Math.round((blended[1] * srcAlpha + data[i + 1] * dstAlpha * (1 - srcAlpha)) / outAlpha);
+      data[i + 2] = Math.round((blended[2] * srcAlpha + data[i + 2] * dstAlpha * (1 - srcAlpha)) / outAlpha);
       data[i + 3] = Math.round(outAlpha * 255);
     }
   }

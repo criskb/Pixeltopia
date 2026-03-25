@@ -12,7 +12,7 @@ export default function Topbar() {
     <>
       <header className="topbar">
         <div>
-          <h1>PixelForge Studio</h1>
+          <h1>Pixeltopia Studio</h1>
           <p className="subhead">Retro sprite editor · animation timeline · palette workflow</p>
         </div>
         <div className="topbar-actions">

@@ -1,13 +1,17 @@
 import { createContext, useContext, useEffect, useMemo, useReducer } from 'react';
 import {
+  addLayer,
   advancePlayhead,
   createFrameAfter,
   createProject,
   deleteFrame,
   duplicateFrame,
   getSelectedCel,
+  removeLayer,
   selectFrame,
   selectLayer,
+  setLayerBlendMode,
+  setLayerOpacity,
   setOnionSkin,
   setPlayback,
   toggleLayerLock,
@@ -37,7 +41,7 @@ const DEFAULT_HISTORY_BUDGET_BYTES = 8 * 1024 * 1024;
 const initialProject = createProject({
   width: 64,
   height: 64,
-  layerNames: ['FX', 'Line Art', 'Base Colors', 'Background'],
+  layerNames: ['Layer 1'],
   frameCount: 12,
   createPixelBuffer
 });
@@ -226,6 +230,14 @@ function runMutation(state, action) {
       return { ...state, project: duplicateFrame(state.project) };
     case 'frame_delete':
       return { ...state, project: deleteFrame(state.project) };
+    case 'layer_create':
+      return { ...state, project: addLayer(state.project, { createPixelBuffer, name: action.name }) };
+    case 'layer_delete':
+      return { ...state, project: removeLayer(state.project, action.layerId) };
+    case 'layer_set_blend_mode':
+      return { ...state, project: setLayerBlendMode(state.project, action.layerId, action.blendMode) };
+    case 'layer_set_opacity':
+      return { ...state, project: setLayerOpacity(state.project, action.layerId, action.opacity) };
     default:
       return state;
   }
@@ -499,6 +511,10 @@ export function editorReducer(state, action) {
     case 'frame_create':
     case 'frame_duplicate':
     case 'frame_delete':
+    case 'layer_create':
+    case 'layer_delete':
+    case 'layer_set_blend_mode':
+    case 'layer_set_opacity':
       return buildCommandResult(state, runMutation(state, action), action.type);
     default:
       return state;
