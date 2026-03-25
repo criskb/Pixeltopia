@@ -122,5 +122,13 @@ describe('editor reliability layer', () => {
 
     state = editorReducer(state, { type: 'material_generate_height_from_sprite', gain: 1 });
     expect(state.material.heightMask.some((value) => value > 0)).toBe(true);
+
+    state = editorReducer(state, { type: 'material_generate_roughness_from_sprite', gain: 1, invert: true });
+    state = editorReducer(state, { type: 'material_generate_metalness_from_sprite', gain: 1, invert: false });
+    expect(state.material.roughnessMask.some((value) => value > 0)).toBe(true);
+    expect(state.material.metalnessMask.some((value) => value > 0)).toBe(true);
+
+    state = editorReducer(state, { type: 'material_apply_preset', preset: 'brushed_metal' });
+    expect(state.material.metalnessStrength).toBeGreaterThan(0.8);
   });
 });

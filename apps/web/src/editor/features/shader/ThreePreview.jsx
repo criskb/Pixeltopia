@@ -3,6 +3,12 @@ import * as THREE from 'three';
 import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import { useEditorState } from '../../state/EditorStateContext';
 import { renderCanvasBuffer } from '../../canvas/renderPipeline';
+import {
+  buildDepthTextureData,
+  buildGrayscaleTextureData,
+  buildHeightTextureData,
+  buildNormalTextureData
+} from './materialMaps';
 
 export default function ThreePreview() {
   const mountRef = useRef(null);
@@ -129,85 +135,34 @@ export default function ThreePreview() {
     rt.material.map = texture;
     rt.material.needsUpdate = true;
 
-    const buildGrayTexture = (mask, strength = 1) => {
-      const gray = new Uint8Array(composite.width * composite.height * 4);
-      for (let i = 0; i < composite.width * composite.height; i += 1) {
-        const normalized = (mask?.[i] ?? 0) / 255;
-        const value = Math.round(255 * Math.max(0, Math.min(1, normalized * strength)));
-        const p = i * 4;
-        gray[p] = value;
-        gray[p + 1] = value;
-        gray[p + 2] = value;
-        gray[p + 3] = 255;
-      }
-      const tex = new THREE.DataTexture(gray, composite.width, composite.height, THREE.RGBAFormat);
+    const makeTexture = (sourceData, colorSpace = THREE.NoColorSpace) => {
+      const tex = new THREE.DataTexture(sourceData, composite.width, composite.height, THREE.RGBAFormat);
       tex.magFilter = THREE.NearestFilter;
       tex.minFilter = THREE.NearestFilter;
-      tex.colorSpace = THREE.NoColorSpace;
+      tex.colorSpace = colorSpace;
       tex.needsUpdate = true;
       return tex;
     };
+
+    const buildGrayTexture = (mask, strength = 1) => {
+      const gray = buildGrayscaleTextureData(mask, composite.width, composite.height, strength);
+      return makeTexture(gray, THREE.NoColorSpace);
+    };
+
+    const heightData = buildHeightTextureData(composite, material.heightMask, material.heightStrength ?? 0.35);
+    const normalData = buildNormalTextureData(heightData, composite.width, composite.height, Math.max(0, material.normalStrength ?? 0.8));
+    const depthData = buildDepthTextureData(heightData);
 
     const buildHeightTexture = () => {
-      const heightData = new Uint8Array(composite.width * composite.height * 4);
-      for (let i = 0; i < composite.width * composite.height; i += 1) {
-        const p = i * 4;
-        const luminance = (
-          0.2126 * composite.data[p]
-          + 0.7152 * composite.data[p + 1]
-          + 0.0722 * composite.data[p + 2]
-        ) / 255;
-        const fromMask = (material.heightMask?.[i] ?? 0) / 255;
-        const combined = Math.max(0, Math.min(1, (luminance * 0.45) + (fromMask * (material.heightStrength ?? 0.35))));
-        const value = Math.round(combined * 255);
-        heightData[p] = value;
-        heightData[p + 1] = value;
-        heightData[p + 2] = value;
-        heightData[p + 3] = 255;
-      }
-      const tex = new THREE.DataTexture(heightData, composite.width, composite.height, THREE.RGBAFormat);
-      tex.magFilter = THREE.NearestFilter;
-      tex.minFilter = THREE.NearestFilter;
-      tex.colorSpace = THREE.NoColorSpace;
-      tex.needsUpdate = true;
-      return { tex, heightData };
+      return { tex: makeTexture(heightData, THREE.NoColorSpace), heightData };
     };
 
-    const buildNormalTexture = (heightData) => {
-      const normal = new Uint8Array(composite.width * composite.height * 4);
-      const strength = Math.max(0, material.normalStrength ?? 0.8);
-      const width = composite.width;
-      const height = composite.height;
-      const getHeight = (x, y) => {
-        const clampedX = Math.max(0, Math.min(width - 1, x));
-        const clampedY = Math.max(0, Math.min(height - 1, y));
-        return heightData[(clampedY * width + clampedX) * 4] / 255;
-      };
-      for (let y = 0; y < height; y += 1) {
-        for (let x = 0; x < width; x += 1) {
-          const left = getHeight(x - 1, y);
-          const right = getHeight(x + 1, y);
-          const up = getHeight(x, y - 1);
-          const down = getHeight(x, y + 1);
-          const dx = (right - left) * strength;
-          const dy = (down - up) * strength;
-          const nx = -dx;
-          const ny = -dy;
-          const nz = 1;
-          const len = Math.max(0.00001, Math.hypot(nx, ny, nz));
-          const px = (y * width + x) * 4;
-          normal[px] = Math.round((((nx / len) * 0.5) + 0.5) * 255);
-          normal[px + 1] = Math.round((((ny / len) * 0.5) + 0.5) * 255);
-          normal[px + 2] = Math.round((((nz / len) * 0.5) + 0.5) * 255);
-          normal[px + 3] = 255;
-        }
-      }
-      const tex = new THREE.DataTexture(normal, composite.width, composite.height, THREE.RGBAFormat);
-      tex.magFilter = THREE.NearestFilter;
-      tex.minFilter = THREE.NearestFilter;
-      tex.colorSpace = THREE.NoColorSpace;
-      tex.needsUpdate = true;
-      return tex;
+    const buildNormalTexture = () => {
+      return makeTexture(normalData, THREE.NoColorSpace);
+    };
+
+    const buildDepthTexture = () => {
+      return makeTexture(depthData, THREE.NoColorSpace);
     };
 
     if (rt.material.roughnessMap) {
@@ -223,14 +178,54 @@ export default function ThreePreview() {
       rt.material.displacementMap.dispose();
     }
 
-    rt.material.roughnessMap = buildGrayTexture(material.roughnessMask, material.roughnessStrength ?? 0.6);
-    rt.material.metalnessMap = buildGrayTexture(material.metalnessMask, material.metalnessStrength ?? 0.35);
-    const { tex: heightTexture, heightData } = buildHeightTexture();
+    const roughnessTexture = buildGrayTexture(material.roughnessMask, material.roughnessStrength ?? 0.6);
+    const metalnessTexture = buildGrayTexture(material.metalnessMask, material.metalnessStrength ?? 0.35);
+    const { tex: heightTexture } = buildHeightTexture();
+    const normalTexture = buildNormalTexture();
+
+    rt.material.roughnessMap = roughnessTexture;
+    rt.material.metalnessMap = metalnessTexture;
     rt.material.displacementMap = heightTexture;
     rt.material.displacementScale = Math.max(0, material.heightStrength ?? 0.35) * 0.25;
-    rt.material.normalMap = buildNormalTexture(heightData);
+    rt.material.normalMap = normalTexture;
     rt.material.roughness = 1;
     rt.material.metalness = 1;
+    rt.material.envMapIntensity = lighting.hdriDataUrl ? (lighting.hdriStrength ?? 0.6) : 0;
+
+    if ((material.previewMode ?? 'lit') !== 'lit') {
+      if (rt.material.map) {
+        rt.material.map.dispose();
+      }
+      switch (material.previewMode) {
+        case 'roughness':
+          rt.material.map = buildGrayTexture(material.roughnessMask, material.roughnessStrength ?? 0.6);
+          break;
+        case 'metalness':
+          rt.material.map = buildGrayTexture(material.metalnessMask, material.metalnessStrength ?? 0.35);
+          break;
+        case 'height':
+          rt.material.map = makeTexture(heightData, THREE.NoColorSpace);
+          break;
+        case 'normal':
+          rt.material.map = makeTexture(normalData, THREE.NoColorSpace);
+          break;
+        case 'depth':
+          rt.material.map = buildDepthTexture();
+          break;
+        default:
+          rt.material.map = texture;
+      }
+      rt.material.normalMap = null;
+      rt.material.displacementMap = null;
+      rt.material.displacementScale = 0;
+      rt.material.roughness = 1;
+      rt.material.metalness = 0;
+      rt.material.envMapIntensity = 0;
+      rt.scene.environment = null;
+    } else {
+      rt.material.map = texture;
+    }
+
     rt.material.needsUpdate = true;
   }, [project, lighting, material]);
 

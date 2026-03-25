@@ -23,15 +23,33 @@ export default function HotkeysProvider({ children }) {
 
       const key = event.key.toLowerCase();
       const withMeta = event.metaKey || event.ctrlKey;
+      const mode = stateRef.current.workspaceMode;
 
-      if (!withMeta && key === 'm') dispatch({ type: 'set_active_tool', tool: 'select-rect' });
-      if (!withMeta && key === 'l') dispatch({ type: 'set_active_tool', tool: 'select-lasso' });
-      if (!withMeta && key === 'b') dispatch({ type: 'set_active_tool', tool: 'pencil' });
-      if (!withMeta && key === 'e') dispatch({ type: 'set_active_tool', tool: 'eraser' });
-      if (!withMeta && key === 'g') dispatch({ type: 'set_active_tool', tool: 'fill' });
-      if (!withMeta && key === 'i') dispatch({ type: 'set_active_tool', tool: 'picker' });
+      if (!withMeta && mode === 'draw' && key === 'm') dispatch({ type: 'set_active_tool', tool: 'select-rect' });
+      if (!withMeta && mode === 'draw' && key === 'l') dispatch({ type: 'set_active_tool', tool: 'select-lasso' });
+      if (!withMeta && mode === 'draw' && key === 'b') dispatch({ type: 'set_active_tool', tool: 'pencil' });
+      if (!withMeta && mode === 'draw' && key === 'e') dispatch({ type: 'set_active_tool', tool: 'eraser' });
+      if (!withMeta && mode === 'draw' && key === 'g') dispatch({ type: 'set_active_tool', tool: 'fill' });
+      if (!withMeta && mode === 'draw' && key === 'i') dispatch({ type: 'set_active_tool', tool: 'picker' });
+      if (!withMeta && mode === 'shader' && key === 'l') dispatch({ type: 'material_set_tool', tool: 'light' });
+      if (!withMeta && mode === 'shader' && key === 'e') dispatch({ type: 'material_set_tool', tool: 'emissive' });
+      if (!withMeta && mode === 'shader' && key === 'r') dispatch({ type: 'material_set_tool', tool: 'emissive-erase' });
+      if (!withMeta && mode === 'shader' && key === 'q') dispatch({ type: 'material_set_tool', tool: 'roughness' });
+      if (!withMeta && mode === 'shader' && key === 'w') dispatch({ type: 'material_set_tool', tool: 'roughness-erase' });
+      if (!withMeta && mode === 'shader' && key === 'a') dispatch({ type: 'material_set_tool', tool: 'metalness' });
+      if (!withMeta && mode === 'shader' && key === 's') dispatch({ type: 'material_set_tool', tool: 'metalness-erase' });
+      if (!withMeta && mode === 'shader' && key === 'd') dispatch({ type: 'material_set_tool', tool: 'height' });
+      if (!withMeta && mode === 'shader' && key === 'f') dispatch({ type: 'material_set_tool', tool: 'height-erase' });
+      if (!withMeta && mode === 'shader' && key >= '1' && key <= '6') {
+        const previewModes = ['lit', 'roughness', 'metalness', 'height', 'normal', 'depth'];
+        dispatch({ type: 'material_set_preview_mode', mode: previewModes[Number(key) - 1] });
+      }
+      if (!withMeta && mode === 'shader' && event.shiftKey && key >= '1' && key <= '4') {
+        const presets = ['matte_paint', 'brushed_metal', 'glossy_plastic', 'emissive_fx'];
+        dispatch({ type: 'material_apply_preset', preset: presets[Number(key) - 1] });
+      }
       if (key === 'escape') dispatch({ type: 'clear_selection' });
-      if (key === 'w') dispatch({ type: 'wrap_preview_toggle' });
+      if (mode !== 'shader' && key === 'w') dispatch({ type: 'wrap_preview_toggle' });
 
       if (withMeta && key === 'z' && !event.shiftKey) {
         event.preventDefault();

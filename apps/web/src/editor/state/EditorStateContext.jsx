@@ -156,6 +156,23 @@ function createHeightMaskFromSelectedCel(project, gain = 1) {
   }
   return mask;
 }
+
+function createChannelMaskFromSelectedCel(project, { gain = 1, invert = false } = {}) {
+  const selectedCel = getSelectedCel(project);
+  const source = selectedCel?.pixelBuffer?.data;
+  if (!source) {
+    return createEmptyMask(project.width, project.height);
+  }
+  const mask = new Uint8Array(project.width * project.height);
+  for (let i = 0; i < project.width * project.height; i += 1) {
+    const px = i * 4;
+    const luminance = (0.2126 * source[px] + 0.7152 * source[px + 1] + 0.0722 * source[px + 2]) / 255;
+    const alpha = source[px + 3] / 255;
+    const normalized = invert ? (1 - luminance) : luminance;
+    mask[i] = Math.round(255 * Math.max(0, Math.min(1, normalized * alpha * gain)));
+  }
+  return mask;
+}
 const initialProject = createProject({
   width: 64,
   height: 64,
@@ -203,6 +220,7 @@ export const initialState = {
   },
   material: {
     tool: 'light',
+    previewMode: 'lit',
     brushRadius: 1,
     emissiveMask: createEmptyMask(initialProject.width, initialProject.height),
     roughnessMask: createEmptyMask(initialProject.width, initialProject.height),
@@ -223,6 +241,40 @@ export const initialState = {
     redoStack: [],
     bytesUsed: 0,
     budgetBytes: DEFAULT_HISTORY_BUDGET_BYTES
+  }
+};
+
+const MATERIAL_PRESETS = {
+  matte_paint: {
+    roughnessStrength: 0.9,
+    metalnessStrength: 0.05,
+    heightStrength: 0.2,
+    normalStrength: 0.55,
+    roughnessPaintValue: 0.85,
+    metalnessPaintValue: 0.1
+  },
+  brushed_metal: {
+    roughnessStrength: 0.45,
+    metalnessStrength: 0.9,
+    heightStrength: 0.25,
+    normalStrength: 0.9,
+    roughnessPaintValue: 0.35,
+    metalnessPaintValue: 0.9
+  },
+  glossy_plastic: {
+    roughnessStrength: 0.25,
+    metalnessStrength: 0.08,
+    heightStrength: 0.15,
+    normalStrength: 0.7,
+    roughnessPaintValue: 0.2,
+    metalnessPaintValue: 0.05
+  },
+  emissive_fx: {
+    emissiveStrength: 1,
+    roughnessStrength: 0.4,
+    metalnessStrength: 0.15,
+    heightStrength: 0.1,
+    emissivePaintValue: 1
   }
 };
 
@@ -870,6 +922,21 @@ export function editorReducer(state, action) {
       return { ...state, lighting: { ...state.lighting, ...action.updates } };
     case 'material_set_tool':
       return { ...state, material: { ...state.material, tool: action.tool } };
+    case 'material_set_preview_mode':
+      return { ...state, material: { ...state.material, previewMode: action.mode ?? 'lit' } };
+    case 'material_apply_preset': {
+      const preset = MATERIAL_PRESETS[action.preset];
+      if (!preset) {
+        return state;
+      }
+      return {
+        ...state,
+        material: {
+          ...state.material,
+          ...preset
+        }
+      };
+    }
     case 'material_set_brush_radius':
       return { ...state, material: { ...state.material, brushRadius: Math.max(1, Math.min(16, action.radius ?? 1)) } };
     case 'material_set_strength':
@@ -890,6 +957,22 @@ export function editorReducer(state, action) {
         material: {
           ...state.material,
           heightMask: createHeightMaskFromSelectedCel(state.project, action.gain ?? 1)
+        }
+      };
+    case 'material_generate_roughness_from_sprite':
+      return {
+        ...state,
+        material: {
+          ...state.material,
+          roughnessMask: createChannelMaskFromSelectedCel(state.project, { gain: action.gain ?? 1, invert: Boolean(action.invert) })
+        }
+      };
+    case 'material_generate_metalness_from_sprite':
+      return {
+        ...state,
+        material: {
+          ...state.material,
+          metalnessMask: createChannelMaskFromSelectedCel(state.project, { gain: action.gain ?? 1, invert: Boolean(action.invert) })
         }
       };
     case 'material_clear_emissive':
