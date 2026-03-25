@@ -7,17 +7,17 @@ A web app to create pixel art.
 This repository is scaffolded using the architecture in `Dev Docs/Structure.md`, with:
 
 - `apps/web` for the future editor UI.
-- `apps/server` for the Node.js backend framework (Fastify).
+- `apps/server` for the backend framework.
 - `packages/*` for modular editor/domain/engine/shared packages.
 
 ## Backend quick start
 
 ```bash
-npm install
 npm run dev:server
+npm run test
 ```
 
-Health endpoint:
+Endpoints:
 
 - `GET /health`
 - `GET /api/v1/status`

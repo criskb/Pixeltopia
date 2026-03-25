@@ -1,5 +1,7 @@
-export async function authPlugin(app) {
-  app.decorate('auth', {
-    verifySession: async () => ({ authenticated: false })
-  });
+export function createAuthService() {
+  return {
+    verifySession() {
+      return { authenticated: false };
+    }
+  };
 }

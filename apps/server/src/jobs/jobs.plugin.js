@@ -1,5 +1,7 @@
-export async function jobsPlugin(app) {
-  app.decorate('jobs', {
-    enqueue: async () => ({ accepted: false, reason: 'queue not configured' })
-  });
+export function createJobsService() {
+  return {
+    enqueue() {
+      return { accepted: false, reason: 'queue not configured' };
+    }
+  };
 }

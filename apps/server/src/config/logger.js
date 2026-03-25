@@ -1,3 +1,8 @@
 import { env } from './env.js';
 
-export const loggerConfig = env.nodeEnv === 'test' ? false : true;
+const noop = () => {};
+
+export const logger = {
+  info: env.nodeEnv === 'test' ? noop : console.log,
+  error: console.error
+};

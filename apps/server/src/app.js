@@ -1,29 +1,21 @@
-import Fastify from 'fastify';
-import fastifyCors from '@fastify/cors';
-import fastifyHelmet from '@fastify/helmet';
+import { BackendServer } from './core/server.js';
 
-import { env } from './config/env.js';
-import { loggerConfig } from './config/logger.js';
-import { authPlugin } from './auth/auth.plugin.js';
-import { storagePlugin } from './storage/storage.plugin.js';
-import { jobsPlugin } from './jobs/jobs.plugin.js';
-import { healthRoute } from './api/health.route.js';
-import { v1Route } from './api/v1.route.js';
+import { logger } from './config/logger.js';
+import { createAuthService } from './auth/auth.plugin.js';
+import { createStorageService } from './storage/storage.plugin.js';
+import { createJobsService } from './jobs/jobs.plugin.js';
+import { registerHealthRoute } from './api/health.route.js';
+import { registerV1StatusRoute } from './api/v1/status.route.js';
 
 export function buildServer() {
-  const app = Fastify({ logger: loggerConfig });
+  const server = new BackendServer({ logger });
 
-  app.register(fastifyHelmet);
-  app.register(fastifyCors, { origin: env.corsOrigin });
+  server.registerPlugin('auth', createAuthService());
+  server.registerPlugin('storage', createStorageService());
+  server.registerPlugin('jobs', createJobsService());
 
-  app.register(authPlugin);
-  app.register(storagePlugin);
-  app.register(jobsPlugin);
+  registerHealthRoute(server);
+  registerV1StatusRoute(server);
 
-  app.register(healthRoute);
-  app.register(async (v1) => {
-    await v1.register(v1Route, { prefix: '/api/v1' });
-  });
-
-  return app;
+  return server;
 }

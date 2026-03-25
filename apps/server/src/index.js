@@ -1,12 +1,9 @@
 import { buildServer } from './app.js';
 import { env } from './config/env.js';
 
-const app = buildServer();
+const server = buildServer();
+const httpServer = server.createHttpServer();
 
-try {
-  await app.listen({ host: env.host, port: env.port });
-  app.log.info(`server listening on ${env.host}:${env.port}`);
-} catch (error) {
-  app.log.error(error, 'failed to start server');
-  process.exit(1);
-}
+httpServer.listen(env.port, env.host, () => {
+  console.log(`server listening on ${env.host}:${env.port}`);
+});
