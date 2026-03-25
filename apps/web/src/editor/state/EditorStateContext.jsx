@@ -28,6 +28,12 @@ import {
 const EditorStateContext = createContext(null);
 const EditorDispatchContext = createContext(null);
 
+const AUTOSAVE_KEY = 'pixelforge.autosave.v1';
+const AUTOSAVE_DB = 'pixelforge_editor';
+const AUTOSAVE_STORE = 'snapshots';
+const AUTOSAVE_INTERVAL_MS = 12_000;
+const DEFAULT_HISTORY_BUDGET_BYTES = 8 * 1024 * 1024;
+
 const initialProject = createProject({
   width: 64,
   height: 64,
@@ -36,7 +42,7 @@ const initialProject = createProject({
   createPixelBuffer
 });
 
-const initialState = {
+export const initialState = {
   project: initialProject,
   currentColor: '#7C5CFF',
   brushSize: 1,
@@ -46,9 +52,133 @@ const initialState = {
   selectionMask: null,
   selectionType: null,
   wrapPreviewEnabled: false,
-  wrapOffset: { x: 0, y: 0 }
+  wrapOffset: { x: 0, y: 0 },
+  history: {
+    undoStack: [],
+    redoStack: [],
+    bytesUsed: 0,
+    budgetBytes: DEFAULT_HISTORY_BUDGET_BYTES
+  }
 };
 
+function getHistoryBudget() {
+  if (typeof window === 'undefined') {
+    return DEFAULT_HISTORY_BUDGET_BYTES;
+  }
+
+  const fromGlobal = Number(window.__PIXELFORGE_UNDO_BUDGET__);
+  if (Number.isFinite(fromGlobal) && fromGlobal > 0) {
+    return fromGlobal;
+  }
+
+  const fromStorage = Number(window.localStorage?.getItem('pixelforge.undoBudgetBytes'));
+  if (Number.isFinite(fromStorage) && fromStorage > 0) {
+    return fromStorage;
+  }
+
+  return DEFAULT_HISTORY_BUDGET_BYTES;
+}
+
+function estimateHistoryEntryBytes(entry) {
+  const beforeBytes = entry.beforeProject?.frames.reduce((size, frame) => (
+    size + Object.values(frame.cels).reduce((celSize, cel) => celSize + (cel.pixelBuffer?.data?.byteLength ?? 0), 0)
+  ), 0) ?? 0;
+  const afterBytes = entry.afterProject?.frames.reduce((size, frame) => (
+    size + Object.values(frame.cels).reduce((celSize, cel) => celSize + (cel.pixelBuffer?.data?.byteLength ?? 0), 0)
+  ), 0) ?? 0;
+  return beforeBytes + afterBytes + 256;
+}
+
+function trimUndoStack(undoStack, budgetBytes) {
+  const trimmed = [...undoStack];
+  let bytesUsed = trimmed.reduce((sum, entry) => sum + entry.bytes, 0);
+
+  while (trimmed.length > 0 && bytesUsed > budgetBytes) {
+    const removed = trimmed.shift();
+    bytesUsed -= removed?.bytes ?? 0;
+  }
+
+  return { undoStack: trimmed, bytesUsed: Math.max(0, bytesUsed) };
+}
+
+function cloneMask(mask) {
+  return mask instanceof Uint8Array ? new Uint8Array(mask) : mask;
+}
+
+function cloneProjectForHistory(project) {
+  return {
+    ...project,
+    layers: project.layers.map((layer) => ({ ...layer })),
+    frames: project.frames.map((frame) => ({
+      ...frame,
+      cels: Object.fromEntries(Object.entries(frame.cels).map(([layerId, cel]) => [layerId, {
+        ...cel,
+        pixelBuffer: {
+          width: cel.pixelBuffer.width,
+          height: cel.pixelBuffer.height,
+          data: new Uint8ClampedArray(cel.pixelBuffer.data)
+        }
+      }]))
+    })),
+    playback: { ...project.playback },
+    onionSkin: { ...project.onionSkin }
+  };
+}
+
+function snapshotFromState(state) {
+  return {
+    project: cloneProjectForHistory(state.project),
+    wrapOffset: { ...state.wrapOffset },
+    selectionMask: cloneMask(state.selectionMask),
+    selectionType: state.selectionType
+  };
+}
+
+function applySnapshot(state, snapshot) {
+  return {
+    ...state,
+    project: snapshot.project,
+    wrapOffset: snapshot.wrapOffset,
+    selectionMask: snapshot.selectionMask,
+    selectionType: snapshot.selectionType
+  };
+}
+
+function buildCommandResult(prevState, nextState, label) {
+  if (nextState === prevState) {
+    return prevState;
+  }
+
+  const beforeSnapshot = snapshotFromState(prevState);
+  const afterSnapshot = snapshotFromState(nextState);
+  const entry = {
+    label,
+    beforeProject: beforeSnapshot.project,
+    beforeWrapOffset: beforeSnapshot.wrapOffset,
+    beforeSelectionMask: beforeSnapshot.selectionMask,
+    beforeSelectionType: beforeSnapshot.selectionType,
+    afterProject: afterSnapshot.project,
+    afterWrapOffset: afterSnapshot.wrapOffset,
+    afterSelectionMask: afterSnapshot.selectionMask,
+    afterSelectionType: afterSnapshot.selectionType
+  };
+  entry.bytes = estimateHistoryEntryBytes(entry);
+
+  const { undoStack, bytesUsed } = trimUndoStack([
+    ...prevState.history.undoStack,
+    entry
+  ], prevState.history.budgetBytes);
+
+  return {
+    ...nextState,
+    history: {
+      ...prevState.history,
+      undoStack,
+      redoStack: [],
+      bytesUsed
+    }
+  };
+}
 
 function applyTransform(pixelBuffer, action, selectionMask) {
   if (!pixelBuffer) {
@@ -71,8 +201,249 @@ function applyTransform(pixelBuffer, action, selectionMask) {
   }
 }
 
-function editorReducer(state, action) {
+function runMutation(state, action) {
   switch (action.type) {
+    case 'transform_pixels': {
+      const selectedCel = getSelectedCel(state.project);
+      const transformed = applyTransform(selectedCel?.pixelBuffer, action, state.selectionMask);
+      if (!transformed) {
+        return state;
+      }
+
+      return {
+        ...state,
+        project: updateCelPixelBuffer(state.project, { pixelBuffer: transformed }),
+        wrapOffset: action.transform === 'offset_wrap'
+          ? { x: state.wrapOffset.x + (action.dx ?? 0), y: state.wrapOffset.y + (action.dy ?? 0) }
+          : state.wrapOffset
+      };
+    }
+    case 'update_pixels':
+      return { ...state, project: updateCelPixelBuffer(state.project, { pixelBuffer: action.pixelBuffer }) };
+    case 'frame_create':
+      return { ...state, project: createFrameAfter(state.project) };
+    case 'frame_duplicate':
+      return { ...state, project: duplicateFrame(state.project) };
+    case 'frame_delete':
+      return { ...state, project: deleteFrame(state.project) };
+    default:
+      return state;
+  }
+}
+
+function deserializePixelBuffer(pixelBuffer) {
+  return {
+    width: pixelBuffer.width,
+    height: pixelBuffer.height,
+    data: new Uint8ClampedArray(pixelBuffer.data)
+  };
+}
+
+function serializeProject(project) {
+  return {
+    ...project,
+    frames: project.frames.map((frame) => ({
+      ...frame,
+      cels: Object.fromEntries(Object.entries(frame.cels).map(([layerId, cel]) => [layerId, {
+        ...cel,
+        pixelBuffer: {
+          width: cel.pixelBuffer.width,
+          height: cel.pixelBuffer.height,
+          data: Array.from(cel.pixelBuffer.data)
+        }
+      }]))
+    }))
+  };
+}
+
+function deserializeProject(project) {
+  return {
+    ...project,
+    frames: project.frames.map((frame) => ({
+      ...frame,
+      cels: Object.fromEntries(Object.entries(frame.cels).map(([layerId, cel]) => [layerId, {
+        ...cel,
+        pixelBuffer: deserializePixelBuffer(cel.pixelBuffer)
+      }]))
+    }))
+  };
+}
+
+function toAutosaveSnapshot(state) {
+  return {
+    savedAt: new Date().toISOString(),
+    project: serializeProject(state.project),
+    ui: {
+      currentColor: state.currentColor,
+      brushSize: state.brushSize,
+      activeTool: state.activeTool,
+      zoomLevel: state.zoomLevel,
+      wrapPreviewEnabled: state.wrapPreviewEnabled,
+      wrapOffset: state.wrapOffset
+    }
+  };
+}
+
+function fromAutosaveSnapshot(snapshot) {
+  return {
+    ...initialState,
+    ...snapshot.ui,
+    project: deserializeProject(snapshot.project),
+    history: {
+      ...initialState.history,
+      budgetBytes: getHistoryBudget()
+    }
+  };
+}
+
+function loadFromLocalStorage() {
+  try {
+    const value = window.localStorage.getItem(AUTOSAVE_KEY);
+    if (!value) {
+      return null;
+    }
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function saveToLocalStorage(snapshot) {
+  try {
+    window.localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // ignore quota errors
+  }
+}
+
+async function withAutosaveStore(mode, handler) {
+  if (typeof window === 'undefined' || !window.indexedDB) {
+    return null;
+  }
+
+  return new Promise((resolve) => {
+    const openReq = window.indexedDB.open(AUTOSAVE_DB, 1);
+    openReq.onupgradeneeded = () => {
+      const db = openReq.result;
+      if (!db.objectStoreNames.contains(AUTOSAVE_STORE)) {
+        db.createObjectStore(AUTOSAVE_STORE);
+      }
+    };
+    openReq.onerror = () => resolve(null);
+    openReq.onsuccess = () => {
+      const db = openReq.result;
+      const tx = db.transaction(AUTOSAVE_STORE, mode);
+      const store = tx.objectStore(AUTOSAVE_STORE);
+      handler(store, resolve);
+      tx.oncomplete = () => db.close();
+      tx.onerror = () => resolve(null);
+    };
+  });
+}
+
+async function saveToIndexedDb(snapshot) {
+  return withAutosaveStore('readwrite', (store, resolve) => {
+    const req = store.put(snapshot, AUTOSAVE_KEY);
+    req.onsuccess = () => resolve(true);
+    req.onerror = () => resolve(null);
+  });
+}
+
+async function loadFromIndexedDb() {
+  return withAutosaveStore('readonly', (store, resolve) => {
+    const req = store.get(AUTOSAVE_KEY);
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = () => resolve(null);
+  });
+}
+
+export async function loadAutosaveSnapshot() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const indexed = await loadFromIndexedDb();
+  return indexed ?? loadFromLocalStorage();
+}
+
+export async function persistAutosaveSnapshot(state) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const snapshot = toAutosaveSnapshot(state);
+  saveToLocalStorage(snapshot);
+  await saveToIndexedDb(snapshot);
+}
+
+export function editorReducer(state, action) {
+  switch (action.type) {
+    case 'hydrate_from_snapshot':
+      return action.snapshot ? fromAutosaveSnapshot(action.snapshot) : state;
+    case 'history_set_budget': {
+      const budgetBytes = Math.max(1, Number(action.budgetBytes) || DEFAULT_HISTORY_BUDGET_BYTES);
+      const trimmed = trimUndoStack(state.history.undoStack, budgetBytes);
+      return {
+        ...state,
+        history: {
+          ...state.history,
+          budgetBytes,
+          undoStack: trimmed.undoStack,
+          bytesUsed: trimmed.bytesUsed
+        }
+      };
+    }
+    case 'undo': {
+      const entry = state.history.undoStack[state.history.undoStack.length - 1];
+      if (!entry) {
+        return state;
+      }
+
+      const restored = {
+        ...state,
+        project: entry.beforeProject,
+        wrapOffset: entry.beforeWrapOffset,
+        selectionMask: entry.beforeSelectionMask,
+        selectionType: entry.beforeSelectionType
+      };
+      const undoStack = state.history.undoStack.slice(0, -1);
+      const redoStack = [...state.history.redoStack, entry];
+      const bytesUsed = undoStack.reduce((sum, item) => sum + item.bytes, 0);
+      return {
+        ...restored,
+        history: {
+          ...state.history,
+          undoStack,
+          redoStack,
+          bytesUsed
+        }
+      };
+    }
+    case 'redo': {
+      const entry = state.history.redoStack[state.history.redoStack.length - 1];
+      if (!entry) {
+        return state;
+      }
+
+      const restored = {
+        ...state,
+        project: entry.afterProject,
+        wrapOffset: entry.afterWrapOffset,
+        selectionMask: entry.afterSelectionMask,
+        selectionType: entry.afterSelectionType
+      };
+      const redoStack = state.history.redoStack.slice(0, -1);
+      const { undoStack, bytesUsed } = trimUndoStack([...state.history.undoStack, entry], state.history.budgetBytes);
+
+      return {
+        ...restored,
+        history: {
+          ...state.history,
+          undoStack,
+          redoStack,
+          bytesUsed
+        }
+      };
+    }
     case 'set_active_tool':
       return { ...state, activeTool: action.tool };
     case 'set_color':
@@ -103,29 +474,6 @@ function editorReducer(state, action) {
       return { ...state, wrapPreviewEnabled: !state.wrapPreviewEnabled };
     case 'wrap_offset_set':
       return { ...state, wrapOffset: action.offset };
-    case 'transform_pixels': {
-      const selectedCel = getSelectedCel(state.project);
-      const transformed = applyTransform(selectedCel?.pixelBuffer, action, state.selectionMask);
-      if (!transformed) {
-        return state;
-      }
-
-      return {
-        ...state,
-        project: updateCelPixelBuffer(state.project, { pixelBuffer: transformed }),
-        wrapOffset: action.transform === 'offset_wrap'
-          ? { x: state.wrapOffset.x + (action.dx ?? 0), y: state.wrapOffset.y + (action.dy ?? 0) }
-          : state.wrapOffset
-      };
-    }
-    case 'update_pixels':
-      return { ...state, project: updateCelPixelBuffer(state.project, { pixelBuffer: action.pixelBuffer }) };
-    case 'frame_create':
-      return { ...state, project: createFrameAfter(state.project) };
-    case 'frame_duplicate':
-      return { ...state, project: duplicateFrame(state.project) };
-    case 'frame_delete':
-      return { ...state, project: deleteFrame(state.project) };
     case 'frame_select':
       return { ...state, project: selectFrame(state.project, action.frameId) };
     case 'layer_toggle_visibility':
@@ -146,13 +494,45 @@ function editorReducer(state, action) {
     }
     case 'onion_toggle':
       return { ...state, project: setOnionSkin(state.project, { enabled: !state.project.onionSkin.enabled }) };
+    case 'update_pixels':
+    case 'transform_pixels':
+    case 'frame_create':
+    case 'frame_duplicate':
+    case 'frame_delete':
+      return buildCommandResult(state, runMutation(state, action), action.type);
     default:
       return state;
   }
 }
 
 export function EditorProvider({ children }) {
-  const [state, dispatch] = useReducer(editorReducer, initialState);
+  const [state, dispatch] = useReducer(editorReducer, {
+    ...initialState,
+    history: {
+      ...initialState.history,
+      budgetBytes: getHistoryBudget()
+    }
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    loadAutosaveSnapshot().then((snapshot) => {
+      if (!snapshot || cancelled) {
+        return;
+      }
+
+      const stamp = snapshot.savedAt ? new Date(snapshot.savedAt).toLocaleString() : 'unknown time';
+      const shouldRecover = window.confirm(`Recover autosaved project from ${stamp}?`);
+      if (shouldRecover) {
+        dispatch({ type: 'hydrate_from_snapshot', snapshot });
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!state.project.playback.isPlaying) {
@@ -163,6 +543,29 @@ export function EditorProvider({ children }) {
     const timer = setInterval(() => dispatch({ type: 'playback_advance', step: 1 }), ms);
     return () => clearInterval(timer);
   }, [state.project.playback.fps, state.project.playback.isPlaying]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      persistAutosaveSnapshot(state);
+    }, AUTOSAVE_INTERVAL_MS);
+
+    const onPageHide = () => persistAutosaveSnapshot(state);
+
+    let idleId = null;
+    if (typeof window.requestIdleCallback === 'function') {
+      idleId = window.requestIdleCallback(() => persistAutosaveSnapshot(state), { timeout: 4000 });
+    }
+
+    window.addEventListener('pagehide', onPageHide);
+
+    return () => {
+      clearInterval(timer);
+      if (idleId !== null && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleId);
+      }
+      window.removeEventListener('pagehide', onPageHide);
+    };
+  }, [state]);
 
   const selectedCel = getSelectedCel(state.project);
   const value = useMemo(() => ({
@@ -180,7 +583,9 @@ export function EditorProvider({ children }) {
     selectionMask: state.selectionMask,
     selectionType: state.selectionType,
     wrapPreviewEnabled: state.wrapPreviewEnabled,
-    wrapOffset: state.wrapOffset
+    wrapOffset: state.wrapOffset,
+    canUndo: state.history.undoStack.length > 0,
+    canRedo: state.history.redoStack.length > 0
   }), [state, selectedCel]);
 
   return (

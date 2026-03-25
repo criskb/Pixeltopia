@@ -163,6 +163,8 @@ function ExportModal({ open, onClose }) {
 
 function Topbar() {
   const [open, setOpen] = useState(false);
+  const { canUndo, canRedo } = useEditorState();
+  const dispatch = useEditorDispatch();
 
   return (
     <>
@@ -172,6 +174,8 @@ function Topbar() {
           <p className="subhead">Sprite Editor Prototype</p>
         </div>
         <div className="topbar-actions">
+          <button onClick={() => dispatch({ type: 'undo' })} disabled={!canUndo}>Undo</button>
+          <button onClick={() => dispatch({ type: 'redo' })} disabled={!canRedo}>Redo</button>
           <button>New</button>
           <button>Open</button>
           <button className="primary" onClick={() => setOpen(true)}>Export</button>
@@ -330,6 +334,15 @@ function Workspace() {
       if (!withMeta && key === 'i') dispatch({ type: 'set_active_tool', tool: 'picker' });
       if (key === 'escape') dispatch({ type: 'clear_selection' });
       if (key === 'w') dispatch({ type: 'wrap_preview_toggle' });
+
+      if (withMeta && key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        dispatch({ type: 'undo' });
+      }
+      if (withMeta && (key === 'y' || (key === 'z' && event.shiftKey))) {
+        event.preventDefault();
+        dispatch({ type: 'redo' });
+      }
 
       if (withMeta && key === 'arrowleft') dispatch({ type: 'transform_pixels', transform: 'move', dx: -1, dy: 0 });
       if (withMeta && key === 'arrowright') dispatch({ type: 'transform_pixels', transform: 'move', dx: 1, dy: 0 });
