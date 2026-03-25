@@ -135,6 +135,12 @@ button:focus-visible {
 .tool-rail,
 .inspector,
 .workspace,
+
+.panel select,
+.panel input[type="number"],
+.panel input[type="range"] {
+  accent-color: var(--accent-secondary);
+}
 .timeline {
   background: var(--bg-panel);
   border: 1px solid var(--outline);
@@ -389,24 +395,49 @@ button:focus-visible {
   padding: 4px 6px;
 }
 
-.canvas-stage {
-  position: relative;
+.rig-bone.selected .rig-segment,
+.rig-bone.selected .rig-joint {
+  background: #ff7ac3;
 }
 
-.selection-box {
+.preset-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+
+.rig-overlay {
   position: absolute;
-  border: 1px dashed rgba(0, 194, 255, 0.9);
+  inset: 0;
   pointer-events: none;
 }
 
-.selection-handle {
+.rig-bone {
+  position: absolute;
+}
+
+.rig-segment {
+  position: absolute;
+  height: 2px;
+  background: rgba(255, 209, 87, 0.85);
+  transform-origin: 0 50%;
+}
+
+.rig-joint {
   position: absolute;
   width: 8px;
   height: 8px;
   margin-left: -4px;
   margin-top: -4px;
-  border: 1px solid #00121b;
-  background: #00c2ff;
+  border-radius: 999px;
+  background: #ffd157;
+  border: 1px solid #664600;
+}
+
+.rig-bone.selected .rig-segment,
+.rig-bone.selected .rig-joint {
+  background: #ff7ac3;
 }
 
 
