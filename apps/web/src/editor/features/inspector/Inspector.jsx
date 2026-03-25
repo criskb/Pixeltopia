@@ -42,13 +42,6 @@ export default function Inspector() {
 
   return (
     <aside className="inspector" aria-label="Inspector panels">
-      <section className="panel tab-panel">
-        <button className={workspaceMode === 'draw' ? 'tab-btn active' : 'tab-btn'} onClick={() => dispatch({ type: 'set_workspace_mode', mode: 'draw' })}><Paintbrush size={14} />Draw</button>
-        <button className={workspaceMode === 'animate' ? 'tab-btn active' : 'tab-btn'} onClick={() => dispatch({ type: 'set_workspace_mode', mode: 'animate' })}><Clapperboard size={14} />Animate</button>
-        <button className={workspaceMode === 'rigging' ? 'tab-btn active' : 'tab-btn'} onClick={() => dispatch({ type: 'set_workspace_mode', mode: 'rigging' })}><Bone size={14} />Rig</button>
-        <button className={workspaceMode === 'shader' ? 'tab-btn active' : 'tab-btn'} onClick={() => dispatch({ type: 'set_workspace_mode', mode: 'shader' })}><SunMedium size={14} />Shader</button>
-      </section>
-
       {workspaceMode === 'draw' && (
         <>
           <section className="panel">
