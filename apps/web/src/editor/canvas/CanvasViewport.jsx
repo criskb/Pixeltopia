@@ -172,10 +172,10 @@ export default function CanvasViewport() {
   }, [project, lighting, rigging, material, zoomLevel, wrapPreviewEnabled, wrapOffset]);
 
   function applyPointerAction(event) {
-    if (workspaceMode === 'shader' && material.tool.startsWith('emissive')) {
+    if (workspaceMode === 'shader' && material.tool !== 'light') {
       const canvas = canvasRef.current;
       const { x, y } = getCanvasPixel(event, canvas, zoomLevel, wrapPreviewEnabled, width, height);
-      dispatch({ type: material.tool === 'emissive-erase' ? 'material_erase' : 'material_paint', x, y, radius: 1 });
+      dispatch({ type: material.tool.endsWith('-erase') ? 'material_erase' : 'material_paint', x, y, radius: 1 });
       return;
     }
 
@@ -224,8 +224,8 @@ export default function CanvasViewport() {
         onPointerDown={(event) => {
           setIsDrawing(true);
           const { x, y } = getCanvasPixel(event, canvasRef.current, zoomLevel, wrapPreviewEnabled, width, height);
-          if (workspaceMode === 'shader' && material.tool.startsWith('emissive')) {
-            dispatch({ type: material.tool === 'emissive-erase' ? 'material_erase' : 'material_paint', x, y, radius: 1 });
+          if (workspaceMode === 'shader' && material.tool !== 'light') {
+            dispatch({ type: material.tool.endsWith('-erase') ? 'material_erase' : 'material_paint', x, y, radius: 1 });
             return;
           }
 
@@ -255,8 +255,8 @@ export default function CanvasViewport() {
         }}
         onPointerMove={(event) => {
           const point = getCanvasPixel(event, canvasRef.current, zoomLevel, wrapPreviewEnabled, width, height);
-          if (workspaceMode === 'shader' && isDrawing && material.tool.startsWith('emissive')) {
-            dispatch({ type: material.tool === 'emissive-erase' ? 'material_erase' : 'material_paint', x: point.x, y: point.y, radius: 1 });
+          if (workspaceMode === 'shader' && isDrawing && material.tool !== 'light') {
+            dispatch({ type: material.tool.endsWith('-erase') ? 'material_erase' : 'material_paint', x: point.x, y: point.y, radius: 1 });
             return;
           }
 
@@ -290,8 +290,8 @@ export default function CanvasViewport() {
           }
         }}
         onPointerUp={(event) => {
-          if (workspaceMode === 'shader' && material.tool.startsWith('emissive')) {
-            dispatch({ type: material.tool === 'emissive-erase' ? 'material_erase' : 'material_paint', x, y, radius: 1 });
+          if (workspaceMode === 'shader' && material.tool !== 'light') {
+            dispatch({ type: material.tool.endsWith('-erase') ? 'material_erase' : 'material_paint', x, y, radius: 1 });
             return;
           }
 

@@ -128,8 +128,14 @@ export default function Inspector() {
           <label className="control-row"><span>Ambient</span><input type="range" min="0" max="1" step="0.01" value={lighting.ambient} onChange={(e) => dispatch({ type: 'lighting_set', updates: { ambient: Number(e.target.value) } })} /></label>
           <label className="control-row"><span>Light Tint</span><input type="color" value={lighting.color} onChange={(e) => dispatch({ type: 'lighting_set', updates: { color: e.target.value } })} /></label>
           <label className="control-row"><span>Emissive Strength</span><input type="range" min="0" max="1" step="0.01" value={material.emissiveStrength} onChange={(e) => dispatch({ type: 'material_set_strength', value: Number(e.target.value) })} /></label>
-          <button onClick={() => dispatch({ type: 'material_clear_emissive' })}>Clear Emissive Mask</button>
-          <p className="subhead">Use Shader → Emissive tool in the rail and paint directly on canvas for live glow preview. Active: {material.tool}</p>
+          <label className="control-row"><span>Roughness Strength</span><input type="range" min="0" max="1" step="0.01" value={material.roughnessStrength} onChange={(e) => dispatch({ type: 'material_set_roughness_strength', value: Number(e.target.value) })} /></label>
+          <label className="control-row"><span>Metalness Strength</span><input type="range" min="0" max="1" step="0.01" value={material.metalnessStrength} onChange={(e) => dispatch({ type: 'material_set_metalness_strength', value: Number(e.target.value) })} /></label>
+          <div className="layer-actions">
+            <button onClick={() => dispatch({ type: 'material_clear_emissive' })}>Clear Emissive</button>
+            <button onClick={() => dispatch({ type: 'material_clear_roughness' })}>Clear Roughness</button>
+            <button onClick={() => dispatch({ type: 'material_clear_metalness' })}>Clear Metalness</button>
+          </div>
+          <p className="subhead">Use shader paint tools (emissive / roughness / metalness) in the rail and paint directly on canvas. Active: {material.tool}</p>
           <div className="preset-row">
             <button onClick={() => dispatch({ type: 'lighting_set', updates: { direction: 30, intensity: 0.75, ambient: 0.25, color: '#ffd38a' } })}>Sunrise</button>
             <button onClick={() => dispatch({ type: 'lighting_set', updates: { direction: 220, intensity: 0.65, ambient: 0.4, color: '#8ac6ff' } })}>Moonlight</button>

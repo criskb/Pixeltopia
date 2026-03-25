@@ -149,7 +149,11 @@ export const initialState = {
   material: {
     tool: 'light',
     emissiveMask: createEmptyMask(initialProject.width, initialProject.height),
-    emissiveStrength: 0.6
+    roughnessMask: createEmptyMask(initialProject.width, initialProject.height),
+    metalnessMask: createEmptyMask(initialProject.width, initialProject.height),
+    emissiveStrength: 0.6,
+    roughnessStrength: 0.6,
+    metalnessStrength: 0.35
   },
   history: {
     undoStack: [],
@@ -392,7 +396,9 @@ function toAutosaveSnapshot(state) {
       lighting: state.lighting,
       material: {
         ...state.material,
-        emissiveMask: Array.from(state.material.emissiveMask)
+        emissiveMask: Array.from(state.material.emissiveMask),
+        roughnessMask: Array.from(state.material.roughnessMask),
+        metalnessMask: Array.from(state.material.metalnessMask)
       }
     }
   };
@@ -405,7 +411,9 @@ function fromAutosaveSnapshot(snapshot) {
     material: snapshot.ui?.material ? {
       ...initialState.material,
       ...snapshot.ui.material,
-      emissiveMask: new Uint8Array(snapshot.ui.material.emissiveMask ?? initialState.material.emissiveMask)
+      emissiveMask: new Uint8Array(snapshot.ui.material.emissiveMask ?? initialState.material.emissiveMask),
+      roughnessMask: new Uint8Array(snapshot.ui.material.roughnessMask ?? initialState.material.roughnessMask),
+      metalnessMask: new Uint8Array(snapshot.ui.material.metalnessMask ?? initialState.material.metalnessMask)
     } : initialState.material,
     project: deserializeProject(snapshot.project),
     history: {
@@ -692,15 +700,27 @@ export function editorReducer(state, action) {
       return { ...state, material: { ...state.material, tool: action.tool } };
     case 'material_set_strength':
       return { ...state, material: { ...state.material, emissiveStrength: action.value } };
+    case 'material_set_roughness_strength':
+      return { ...state, material: { ...state.material, roughnessStrength: action.value } };
+    case 'material_set_metalness_strength':
+      return { ...state, material: { ...state.material, metalnessStrength: action.value } };
     case 'material_clear_emissive':
       return { ...state, material: { ...state.material, emissiveMask: createEmptyMask(state.project.width, state.project.height) } };
+    case 'material_clear_roughness':
+      return { ...state, material: { ...state.material, roughnessMask: createEmptyMask(state.project.width, state.project.height) } };
+    case 'material_clear_metalness':
+      return { ...state, material: { ...state.material, metalnessMask: createEmptyMask(state.project.width, state.project.height) } };
     case 'material_paint': {
-      const mask = paintMask(state.material.emissiveMask, state.project.width, state.project.height, action.x, action.y, action.radius ?? 1);
-      return { ...state, material: { ...state.material, emissiveMask: mask } };
+      const tool = state.material.tool;
+      const target = tool === 'roughness' ? 'roughnessMask' : tool === 'metalness' ? 'metalnessMask' : 'emissiveMask';
+      const mask = paintMask(state.material[target], state.project.width, state.project.height, action.x, action.y, action.radius ?? 1);
+      return { ...state, material: { ...state.material, [target]: mask } };
     }
     case 'material_erase': {
-      const mask = eraseMask(state.material.emissiveMask, state.project.width, state.project.height, action.x, action.y, action.radius ?? 1);
-      return { ...state, material: { ...state.material, emissiveMask: mask } };
+      const tool = state.material.tool;
+      const target = tool === 'roughness-erase' ? 'roughnessMask' : tool === 'metalness-erase' ? 'metalnessMask' : 'emissiveMask';
+      const mask = eraseMask(state.material[target], state.project.width, state.project.height, action.x, action.y, action.radius ?? 1);
+      return { ...state, material: { ...state.material, [target]: mask } };
     }
     case 'frame_select':
       return { ...state, project: selectFrame(state.project, action.frameId) };

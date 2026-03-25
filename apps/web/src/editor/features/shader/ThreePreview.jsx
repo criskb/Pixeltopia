@@ -97,6 +97,34 @@ export default function ThreePreview() {
 
     rt.material.map = texture;
     rt.material.needsUpdate = true;
+
+    const buildGrayTexture = (mask, strength) => {
+      const gray = new Uint8Array(composite.width * composite.height * 4);
+      for (let i = 0; i < composite.width * composite.height; i += 1) {
+        const value = mask?.[i] ? Math.round(255 * strength) : 0;
+        const p = i * 4;
+        gray[p] = value;
+        gray[p + 1] = value;
+        gray[p + 2] = value;
+        gray[p + 3] = 255;
+      }
+      const tex = new THREE.DataTexture(gray, composite.width, composite.height, THREE.RGBAFormat);
+      tex.magFilter = THREE.NearestFilter;
+      tex.minFilter = THREE.NearestFilter;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.needsUpdate = true;
+      return tex;
+    };
+
+    if (rt.material.roughnessMap) {
+      rt.material.roughnessMap.dispose();
+    }
+    if (rt.material.metalnessMap) {
+      rt.material.metalnessMap.dispose();
+    }
+
+    rt.material.roughnessMap = buildGrayTexture(material.roughnessMask, material.roughnessStrength ?? 0.6);
+    rt.material.metalnessMap = buildGrayTexture(material.metalnessMask, material.metalnessStrength ?? 0.35);
   }, [project, lighting, material]);
 
   return <div className="three-preview" ref={mountRef} aria-label="Three.js material and lighting preview" />;

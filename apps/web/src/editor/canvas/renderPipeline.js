@@ -149,7 +149,7 @@ function compositeInto(base, overlay) {
 
 
 function applyMaterialChannels(buffer, material) {
-  if (!material?.emissiveMask) {
+  if (!material) {
     return buffer;
   }
 
@@ -159,15 +159,30 @@ function applyMaterialChannels(buffer, material) {
     data: new Uint8ClampedArray(buffer.data)
   };
 
-  const strength = Math.max(0, Math.min(1, material.emissiveStrength ?? 0.6));
-  for (let i = 0; i < material.emissiveMask.length; i += 1) {
-    if (!material.emissiveMask[i]) {
-      continue;
-    }
+  const emissiveStrength = Math.max(0, Math.min(1, material.emissiveStrength ?? 0.6));
+  const roughnessStrength = Math.max(0, Math.min(1, material.roughnessStrength ?? 0.6));
+  const metalnessStrength = Math.max(0, Math.min(1, material.metalnessStrength ?? 0.35));
+
+  for (let i = 0; i < out.width * out.height; i += 1) {
     const px = i * 4;
-    out.data[px] = Math.min(255, out.data[px] + 255 * strength * 0.35);
-    out.data[px + 1] = Math.min(255, out.data[px + 1] + 80 * strength);
-    out.data[px + 2] = Math.min(255, out.data[px + 2] + 255 * strength);
+    if (material.emissiveMask?.[i]) {
+      out.data[px] = Math.min(255, out.data[px] + 255 * emissiveStrength * 0.35);
+      out.data[px + 1] = Math.min(255, out.data[px + 1] + 80 * emissiveStrength);
+      out.data[px + 2] = Math.min(255, out.data[px + 2] + 255 * emissiveStrength);
+    }
+
+    if (material.roughnessMask?.[i]) {
+      const rough = 1 - 0.22 * roughnessStrength;
+      out.data[px] = Math.round(out.data[px] * rough);
+      out.data[px + 1] = Math.round(out.data[px + 1] * rough);
+      out.data[px + 2] = Math.round(out.data[px + 2] * rough);
+    }
+
+    if (material.metalnessMask?.[i]) {
+      out.data[px] = Math.min(255, out.data[px] + 35 * metalnessStrength);
+      out.data[px + 1] = Math.min(255, out.data[px + 1] + 35 * metalnessStrength);
+      out.data[px + 2] = Math.min(255, out.data[px + 2] + 45 * metalnessStrength);
+    }
   }
 
   return out;
