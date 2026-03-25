@@ -6,9 +6,24 @@ A web app to create pixel art.
 
 This repository is scaffolded using the architecture in `Dev Docs/Structure.md`, with:
 
-- `apps/web` for the future editor UI.
+- `apps/web` for the editor UI prototype.
 - `apps/server` for the backend framework.
 - `packages/*` for modular editor/domain/engine/shared packages.
+
+## Setup
+
+Install dependencies from the repository root before running any workspace script:
+
+```bash
+npm install
+```
+
+## Web quick start
+
+```bash
+npm run dev:web
+npm run build:web
+```
 
 ## Backend quick start
 
@@ -21,3 +36,19 @@ Endpoints:
 
 - `GET /health`
 - `GET /api/v1/status`
+
+
+### Troubleshooting
+
+If you previously saw `sh: vite: command not found`, rerun install from repo root:
+
+```bash
+npm install
+```
+
+Then run:
+
+```bash
+npm run build:web
+```
+
