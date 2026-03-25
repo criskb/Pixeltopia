@@ -1,15 +1,18 @@
+import { Eye, EyeOff, Lock, LockOpen, Palette, Paintbrush, Repeat2, Layers3, Plus, Trash2 } from 'lucide-react';
 import { useEditorDispatch, useEditorState } from '../../state/EditorStateContext';
 
 const swatches = ['#1D1D1D', '#FFFFFF', '#7C5CFF', '#00C2FF', '#37D67A', '#FFB020', '#FF5D73', '#8B5CF6'];
+const blendModes = ['normal', 'multiply', 'screen', 'add'];
 
 export default function Inspector() {
   const { currentColor, brushSize, zoomLevel, layers, selectedLayerId, onionSkin, wrapPreviewEnabled } = useEditorState();
   const dispatch = useEditorDispatch();
+  const selectedLayer = layers.find((layer) => layer.id === selectedLayerId) ?? layers[0];
 
   return (
     <aside className="inspector" aria-label="Inspector panels">
       <section className="panel">
-        <h2>Palette</h2>
+        <h2><Palette size={14} /> Palette</h2>
         <div className="swatch-grid">
           {swatches.map((color) => (
             <button
@@ -25,20 +28,51 @@ export default function Inspector() {
       </section>
 
       <section className="panel">
-        <h2>Layers</h2>
+        <h2><Layers3 size={14} /> Layers</h2>
+        <div className="layer-actions">
+          <button onClick={() => dispatch({ type: 'layer_create' })}><Plus size={14} />Add</button>
+          <button onClick={() => dispatch({ type: 'layer_delete', layerId: selectedLayerId })} disabled={layers.length <= 1}><Trash2 size={14} />Remove</button>
+        </div>
         <ul className="layer-list">
           {layers.map((layer) => (
             <li key={layer.id} className={layer.id === selectedLayerId ? 'layer-row selected' : 'layer-row'}>
-              <button onClick={() => dispatch({ type: 'layer_toggle_visibility', layerId: layer.id })}>{layer.visible ? '👁' : '🚫'}</button>
-              <button onClick={() => dispatch({ type: 'layer_toggle_lock', layerId: layer.id })}>{layer.locked ? '🔒' : '🔓'}</button>
+              <button onClick={() => dispatch({ type: 'layer_toggle_visibility', layerId: layer.id })}>{layer.visible ? <Eye size={14} /> : <EyeOff size={14} />}</button>
+              <button onClick={() => dispatch({ type: 'layer_toggle_lock', layerId: layer.id })}>{layer.locked ? <Lock size={14} /> : <LockOpen size={14} />}</button>
               <button onClick={() => dispatch({ type: 'layer_select', layerId: layer.id })}>{layer.name}</button>
             </li>
           ))}
         </ul>
+
+        {selectedLayer && (
+          <>
+            <label className="control-row">
+              <span>Blend</span>
+              <select
+                value={selectedLayer.blendMode ?? 'normal'}
+                onChange={(event) => dispatch({ type: 'layer_set_blend_mode', layerId: selectedLayer.id, blendMode: event.target.value })}
+              >
+                {blendModes.map((mode) => (
+                  <option key={mode} value={mode}>{mode}</option>
+                ))}
+              </select>
+            </label>
+            <label className="control-row" htmlFor="layerOpacity">
+              <span>Opacity</span>
+              <input
+                id="layerOpacity"
+                type="range"
+                min="0"
+                max="100"
+                value={Math.round((selectedLayer.opacity ?? 1) * 100)}
+                onChange={(event) => dispatch({ type: 'layer_set_opacity', layerId: selectedLayer.id, opacity: Number(event.target.value) / 100 })}
+              />
+            </label>
+          </>
+        )}
       </section>
 
       <section className="panel">
-        <h2>Brush</h2>
+        <h2><Paintbrush size={14} /> Brush</h2>
         <label className="control-row" htmlFor="brushSize">
           <span>Size</span>
           <input
@@ -62,7 +96,7 @@ export default function Inspector() {
       </section>
 
       <section className="panel">
-        <h2>Wrap Preview</h2>
+        <h2><Repeat2 size={14} /> Wrap Preview</h2>
         <button onClick={() => dispatch({ type: 'wrap_preview_toggle' })}>{wrapPreviewEnabled ? 'Disable 3x3' : 'Enable 3x3'}</button>
       </section>
     </aside>
