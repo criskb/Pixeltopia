@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import { useEditorState } from '../../state/EditorStateContext';
 import { renderCanvasBuffer } from '../../canvas/renderPipeline';
 
@@ -98,10 +99,12 @@ export default function ThreePreview() {
       rt.scene.environment = null;
     }
     if (lighting.hdriDataUrl) {
-      const loader = new THREE.TextureLoader();
+      const loader = lighting.hdriFormat === 'exr' ? new EXRLoader() : new THREE.TextureLoader();
       loader.load(lighting.hdriDataUrl, (texture) => {
         texture.mapping = THREE.EquirectangularReflectionMapping;
-        texture.colorSpace = THREE.SRGBColorSpace;
+        if (lighting.hdriFormat !== 'exr') {
+          texture.colorSpace = THREE.SRGBColorSpace;
+        }
         rt.environmentTexture = texture;
         rt.scene.environment = texture;
       });

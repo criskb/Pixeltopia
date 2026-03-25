@@ -179,6 +179,7 @@ export const initialState = {
     position: { x: Math.round(initialProject.width * 0.75), y: Math.round(initialProject.height * 0.25) },
     hdriStrength: 0.6,
     hdriSamples: null,
+    hdriFormat: '',
     hdriName: ''
   },
   material: {

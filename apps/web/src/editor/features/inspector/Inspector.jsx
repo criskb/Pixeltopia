@@ -1,4 +1,5 @@
 import { Suspense, lazy, useMemo, useRef } from 'react';
+import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import {
   Eye,
   EyeOff,
@@ -47,6 +48,27 @@ export default function Inspector() {
 
   const loadHdri = async (file) => {
     try {
+      const isExr = file.name.toLowerCase().endsWith('.exr');
+      if (isExr) {
+        const arrayBuffer = await file.arrayBuffer();
+        const exrLoader = new EXRLoader();
+        const texture = exrLoader.parse(arrayBuffer);
+        const width = texture.image.width;
+        const height = texture.image.height;
+        const data = texture.image.data;
+        const channels = data.length / (width * height);
+        const toByte = (value) => Math.max(0, Math.min(255, Math.round((value ** (1 / 2.2)) * 255)));
+        const hdriSamples = Array.from({ length: 64 }, (_, sampleIndex) => {
+          const sx = Math.min(width - 1, Math.floor((sampleIndex / 63) * (width - 1)));
+          const sy = Math.floor(height * 0.5);
+          const i = (sy * width + sx) * channels;
+          return [toByte(data[i] ?? 0), toByte(data[i + 1] ?? 0), toByte(data[i + 2] ?? 0)];
+        });
+        const hdriDataUrl = URL.createObjectURL(file);
+        dispatch({ type: 'lighting_set', updates: { hdriName: file.name, hdriFormat: 'exr', hdriDataUrl, hdriSamples } });
+        return;
+      }
+
       const dataUrl = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result ?? ''));
@@ -72,7 +94,7 @@ export default function Inspector() {
         const pixel = index * 4;
         return [row[pixel], row[pixel + 1], row[pixel + 2]];
       });
-      dispatch({ type: 'lighting_set', updates: { hdriName: file.name, hdriDataUrl: dataUrl, hdriSamples } });
+      dispatch({ type: 'lighting_set', updates: { hdriName: file.name, hdriFormat: 'image', hdriDataUrl: dataUrl, hdriSamples } });
     } catch {
       // Ignore invalid files.
     }
@@ -189,7 +211,7 @@ export default function Inspector() {
           <label className="control-row"><span>HDRI Mix</span><input type="range" min="0" max="1" step="0.01" value={lighting.hdriStrength ?? 0.6} onChange={(e) => dispatch({ type: 'lighting_set', updates: { hdriStrength: Number(e.target.value) } })} /></label>
           <div className="layer-actions">
             <button onClick={() => hdriInputRef.current?.click()}>Load HDRI</button>
-            <button onClick={() => dispatch({ type: 'lighting_set', updates: { hdriName: '', hdriDataUrl: '', hdriSamples: null } })} disabled={!lighting.hdriSamples}>Clear HDRI</button>
+            <button onClick={() => dispatch({ type: 'lighting_set', updates: { hdriName: '', hdriFormat: '', hdriDataUrl: '', hdriSamples: null } })} disabled={!lighting.hdriSamples}>Clear HDRI</button>
           </div>
           <label className="control-row"><span>Emissive Strength</span><input type="range" min="0" max="1" step="0.01" value={material.emissiveStrength} onChange={(e) => dispatch({ type: 'material_set_strength', value: Number(e.target.value) })} /></label>
           <label className="control-row"><span>Roughness Strength</span><input type="range" min="0" max="1" step="0.01" value={material.roughnessStrength} onChange={(e) => dispatch({ type: 'material_set_roughness_strength', value: Number(e.target.value) })} /></label>
@@ -203,7 +225,7 @@ export default function Inspector() {
           <input
             ref={hdriInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,.exr"
             hidden
             onChange={(event) => {
               const [file] = event.target.files ?? [];
