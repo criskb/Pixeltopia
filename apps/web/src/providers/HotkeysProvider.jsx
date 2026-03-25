@@ -1,8 +1,19 @@
-import { useEffect } from 'react';
-import { useEditorDispatch } from '../editor/state/EditorStateContext';
+import { useEffect, useRef } from 'react';
+import {
+  createWorkspacePolishPlan,
+  persistAutosaveSnapshot,
+  useEditorDispatch,
+  useEditorState
+} from '../editor/state/EditorStateContext';
 
 export default function HotkeysProvider({ children }) {
+  const state = useEditorState();
+  const stateRef = useRef(state);
   const dispatch = useEditorDispatch();
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -40,6 +51,17 @@ export default function HotkeysProvider({ children }) {
       if (withMeta && key === 'v') dispatch({ type: 'transform_pixels', transform: 'flip', axis: 'vertical' });
       if (withMeta && key === '=') dispatch({ type: 'transform_pixels', transform: 'scale', scaleX: 2, scaleY: 2 });
       if (withMeta && key === '-') dispatch({ type: 'transform_pixels', transform: 'scale', scaleX: 0.5, scaleY: 0.5 });
+      if (withMeta && key === 's') {
+        event.preventDefault();
+        persistAutosaveSnapshot(stateRef.current);
+      }
+      if (withMeta && event.shiftKey && key === 'p') {
+        event.preventDefault();
+        const plan = createWorkspacePolishPlan(stateRef.current);
+        for (const action of plan.actions) {
+          dispatch(action);
+        }
+      }
 
       if (event.altKey && key === 'arrowleft') dispatch({ type: 'transform_pixels', transform: 'offset_wrap', dx: -1, dy: 0 });
       if (event.altKey && key === 'arrowright') dispatch({ type: 'transform_pixels', transform: 'offset_wrap', dx: 1, dy: 0 });
