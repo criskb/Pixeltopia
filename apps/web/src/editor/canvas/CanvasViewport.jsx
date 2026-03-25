@@ -80,7 +80,7 @@ function RigOverlay({ rigging, zoomLevel, width, height, wrapPreviewEnabled }) {
     return null;
   }
 
-  const offset = wrapPreviewEnabled ? { x: width, y: height } : { x: 0, y: 0 };
+  const offset = { x: 0, y: 0 };
 
   return (
     <div className="rig-overlay" aria-hidden="true">

@@ -395,15 +395,20 @@ button:focus-visible {
   padding: 4px 6px;
 }
 
+.rig-joint {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  margin-top: -4px;
+  border-radius: 999px;
+  background: #ffd157;
+  border: 1px solid #664600;
+}
+
 .rig-bone.selected .rig-segment,
 .rig-bone.selected .rig-joint {
   background: #ff7ac3;
-}
-
-.preset-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
 }
 
 
@@ -413,6 +418,24 @@ button:focus-visible {
   pointer-events: none;
 }
 
+
+.rig-mask {
+  position: absolute;
+  inset: 0;
+}
+
+.rig-mask-pixel {
+  position: absolute;
+  background: rgba(255, 122, 195, 0.35);
+  pointer-events: none;
+}
+
+.rig-draft {
+  position: absolute;
+  height: 2px;
+  background: #58fffc;
+  transform-origin: 0 50%;
+}
 .rig-bone {
   position: absolute;
 }
@@ -438,6 +461,18 @@ button:focus-visible {
 .rig-bone.selected .rig-segment,
 .rig-bone.selected .rig-joint {
   background: #ff7ac3;
+}
+
+.preset-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.preset-row button {
+  justify-content: center;
+  font-size: 11px;
+  padding: 6px;
 }
 
 
