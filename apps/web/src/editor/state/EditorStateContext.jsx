@@ -110,6 +110,36 @@ function eraseMask(mask, width, height, x, y, radius = 1) {
   }
   return next;
 }
+
+function distanceToSegment(point, start, end) {
+  const vx = end.x - start.x;
+  const vy = end.y - start.y;
+  const wx = point.x - start.x;
+  const wy = point.y - start.y;
+  const len2 = vx * vx + vy * vy;
+  if (len2 <= 0.0001) {
+    return Math.hypot(point.x - start.x, point.y - start.y);
+  }
+  const t = Math.max(0, Math.min(1, (wx * vx + wy * vy) / len2));
+  const projX = start.x + t * vx;
+  const projY = start.y + t * vy;
+  return Math.hypot(point.x - projX, point.y - projY);
+}
+
+function createAutoSkinMask(width, height, bone, radius = 6) {
+  const mask = createEmptyMask(width, height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const dist = distanceToSegment({ x, y }, bone.start, bone.end);
+      if (dist <= radius) {
+        const idx = y * width + x;
+        const strength = Math.round(255 * (1 - dist / Math.max(1, radius)));
+        mask[idx] = Math.max(mask[idx], strength);
+      }
+    }
+  }
+  return mask;
+}
 const initialProject = createProject({
   width: 64,
   height: 64,
@@ -680,6 +710,48 @@ export function editorReducer(state, action) {
     }
     case 'rigging_select_bone':
       return { ...state, rigging: { ...state.rigging, selectedBoneId: action.boneId } };
+    case 'rigging_auto_skin_selected': {
+      const boneId = action.boneId ?? state.rigging.selectedBoneId;
+      const bone = state.rigging.bones.find((item) => item.id === boneId);
+      if (!bone) {
+        return state;
+      }
+      const radius = Math.max(1, action.radius ?? 6);
+      return {
+        ...state,
+        rigging: {
+          ...state.rigging,
+          weights: {
+            ...state.rigging.weights,
+            [bone.id]: createAutoSkinMask(state.project.width, state.project.height, bone, radius)
+          }
+        }
+      };
+    }
+    case 'rigging_auto_skin_all': {
+      const radius = Math.max(1, action.radius ?? 7);
+      const weights = { ...state.rigging.weights };
+      for (const bone of state.rigging.bones) {
+        weights[bone.id] = createAutoSkinMask(state.project.width, state.project.height, bone, radius);
+      }
+      return { ...state, rigging: { ...state.rigging, weights } };
+    }
+    case 'rigging_clear_selected_weights': {
+      const boneId = action.boneId ?? state.rigging.selectedBoneId;
+      if (!boneId) {
+        return state;
+      }
+      return {
+        ...state,
+        rigging: {
+          ...state.rigging,
+          weights: {
+            ...state.rigging.weights,
+            [boneId]: createEmptyMask(state.project.width, state.project.height)
+          }
+        }
+      };
+    }
     case 'rigging_delete_bone': {
       if (state.rigging.bones.length <= 1) {
         return state;

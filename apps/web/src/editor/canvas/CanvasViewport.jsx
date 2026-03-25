@@ -119,10 +119,38 @@ function RigOverlay({ rigging, zoomLevel, width, height, wrapPreviewEnabled, met
   );
 }
 
-function ShaderViewportControls({ lighting, material, zoomLevel, overlayMetrics, dispatch }) {
-  const fileInputRef = useRef(null);
-  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+function distanceToBone(point, bone) {
+  const segmentX = bone.end.x - bone.start.x;
+  const segmentY = bone.end.y - bone.start.y;
+  const segmentLen2 = segmentX * segmentX + segmentY * segmentY;
+  if (segmentLen2 <= 0.0001) {
+    return Math.hypot(point.x - bone.start.x, point.y - bone.start.y);
+  }
+  const wx = point.x - bone.start.x;
+  const wy = point.y - bone.start.y;
+  const t = Math.max(0, Math.min(1, (wx * segmentX + wy * segmentY) / segmentLen2));
+  const projX = bone.start.x + t * segmentX;
+  const projY = bone.start.y + t * segmentY;
+  return Math.hypot(point.x - projX, point.y - projY);
+}
 
+function findBoneAtPoint(point, bones, threshold = 2.5) {
+  let best = null;
+  for (const bone of bones) {
+    const jointDist = Math.min(
+      Math.hypot(point.x - bone.start.x, point.y - bone.start.y),
+      Math.hypot(point.x - bone.end.x, point.y - bone.end.y)
+    );
+    const segmentDist = distanceToBone(point, bone);
+    const dist = Math.min(jointDist, segmentDist);
+    if (dist <= threshold && (!best || dist < best.dist)) {
+      best = { id: bone.id, dist };
+    }
+  }
+  return best?.id ?? null;
+}
+
+function ShaderViewportControls({ lighting, material, zoomLevel, overlayMetrics }) {
   const lightHandle = useMemo(() => {
     const safePos = lighting.position ?? { x: 0, y: 0 };
     return {
@@ -131,104 +159,12 @@ function ShaderViewportControls({ lighting, material, zoomLevel, overlayMetrics,
     };
   }, [lighting.position, zoomLevel]);
 
-  const loadHdri = async (file) => {
-    try {
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result ?? ''));
-        reader.onerror = () => reject(new Error('Failed to read HDRI file'));
-        reader.readAsDataURL(file);
-      });
-
-      const image = await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error('Failed to decode HDRI image'));
-        img.src = dataUrl;
-      });
-
-      const sampleCanvas = document.createElement('canvas');
-      sampleCanvas.width = 64;
-      sampleCanvas.height = 1;
-      const ctx = sampleCanvas.getContext('2d');
-      if (!ctx) {
-        return;
-      }
-      ctx.drawImage(image, 0, 0, sampleCanvas.width, sampleCanvas.height);
-      const row = ctx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height).data;
-      const hdriSamples = Array.from({ length: sampleCanvas.width }, (_, index) => {
-        const pixel = index * 4;
-        return [row[pixel], row[pixel + 1], row[pixel + 2]];
-      });
-
-      dispatch({
-        type: 'lighting_set',
-        updates: {
-          hdriName: file.name,
-          hdriDataUrl: dataUrl,
-          hdriSamples
-        }
-      });
-    } catch {
-      // Ignore invalid files and keep current lighting settings.
-    }
-  };
-
   return (
     <div className="shader-overlay" style={{ left: overlayMetrics.left, top: overlayMetrics.top, width: overlayMetrics.width, height: overlayMetrics.height }}>
       {lighting.enabled && (
         <div className="light-handle" style={{ left: lightHandle.left, top: lightHandle.top }} title="Drag to move local light source" aria-hidden="true" />
       )}
-      <div className="shader-overlay-panel">
-        <div className="control-row">
-          <span>Lighting</span>
-          <button onClick={() => dispatch({ type: 'lighting_toggle' })}>{lighting.enabled ? 'On' : 'Off'}</button>
-        </div>
-        <div className="control-row">
-          <span>Mode</span>
-          <div className="segmented">
-            <button className={lighting.mode === 'point' ? 'active' : ''} onClick={() => dispatch({ type: 'lighting_set', updates: { mode: 'point' } })}>Point</button>
-            <button className={lighting.mode === 'global' ? 'active' : ''} onClick={() => dispatch({ type: 'lighting_set', updates: { mode: 'global' } })}>Global</button>
-          </div>
-        </div>
-        {lighting.mode === 'global' && (
-          <label className="control-row"><span>Direction</span><input type="range" min="0" max="360" value={lighting.direction} onChange={(e) => dispatch({ type: 'lighting_set', updates: { direction: Number(e.target.value) } })} /></label>
-        )}
-        {lighting.mode === 'point' && (
-          <>
-            <label className="control-row"><span>Light X</span><input type="number" min="0" max={Math.max(0, Math.round(overlayMetrics.width / Math.max(1, zoomLevel)))} value={Math.round(lighting.position?.x ?? 0)} onChange={(e) => dispatch({ type: 'lighting_set', updates: { position: { ...(lighting.position ?? { x: 0, y: 0 }), x: clamp(Number(e.target.value), 0, Math.max(0, Math.round(overlayMetrics.width / Math.max(1, zoomLevel)))) } } })} /></label>
-            <label className="control-row"><span>Light Y</span><input type="number" min="0" max={Math.max(0, Math.round(overlayMetrics.height / Math.max(1, zoomLevel)))} value={Math.round(lighting.position?.y ?? 0)} onChange={(e) => dispatch({ type: 'lighting_set', updates: { position: { ...(lighting.position ?? { x: 0, y: 0 }), y: clamp(Number(e.target.value), 0, Math.max(0, Math.round(overlayMetrics.height / Math.max(1, zoomLevel)))) } } })} /></label>
-          </>
-        )}
-        <label className="control-row"><span>Intensity</span><input type="range" min="0" max="1" step="0.01" value={lighting.intensity} onChange={(e) => dispatch({ type: 'lighting_set', updates: { intensity: Number(e.target.value) } })} /></label>
-        <label className="control-row"><span>Ambient</span><input type="range" min="0" max="1" step="0.01" value={lighting.ambient} onChange={(e) => dispatch({ type: 'lighting_set', updates: { ambient: Number(e.target.value) } })} /></label>
-        <label className="control-row"><span>Tint</span><input type="color" value={lighting.color} onChange={(e) => dispatch({ type: 'lighting_set', updates: { color: e.target.value } })} /></label>
-        <label className="control-row"><span>HDRI Mix</span><input type="range" min="0" max="1" step="0.01" value={lighting.hdriStrength ?? 0.6} onChange={(e) => dispatch({ type: 'lighting_set', updates: { hdriStrength: Number(e.target.value) } })} /></label>
-        <div className="preset-row">
-          <button onClick={() => dispatch({ type: 'lighting_set', updates: { mode: 'point', enabled: true, intensity: 0.9, ambient: 0.22, color: '#ffe0a8' } })}>Key</button>
-          <button onClick={() => dispatch({ type: 'lighting_set', updates: { mode: 'global', enabled: true, direction: 230, intensity: 0.6, ambient: 0.38, color: '#8cc6ff' } })}>Fill</button>
-          <button onClick={() => dispatch({ type: 'lighting_set', updates: { mode: 'global', enabled: true, direction: 140, intensity: 0.82, ambient: 0.2, color: '#fff2c4' } })}>Rim</button>
-        </div>
-        <div className="layer-actions">
-          <button onClick={() => fileInputRef.current?.click()}>Load HDRI</button>
-          <button onClick={() => dispatch({ type: 'lighting_set', updates: { hdriName: '', hdriDataUrl: '', hdriSamples: null } })} disabled={!lighting.hdriSamples}>Clear HDRI</button>
-          <button onClick={() => dispatch({ type: 'lighting_set', updates: { mode: 'point', direction: 40, intensity: 0.7, ambient: 0.35, color: '#ffd38a', hdriStrength: 0.6 } })}>Reset</button>
-        </div>
-        <p className="subhead">Drag in-canvas while Light tool is active. Active material tool: {material.tool}. {lighting.hdriName ? `HDRI: ${lighting.hdriName}` : 'No HDRI loaded.'}</p>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          hidden
-          onChange={(event) => {
-            const [file] = event.target.files ?? [];
-            if (file) {
-              loadHdri(file);
-            }
-            event.target.value = '';
-          }}
-        />
-      </div>
+      {material.tool === 'light' && <div className="shader-overlay-hint">Light tool active · drag on canvas to reposition light</div>}
     </div>
   );
 }
@@ -366,13 +302,17 @@ export default function CanvasViewport() {
             if (!rigging.enabled) {
               dispatch({ type: 'rigging_toggle' });
             }
+            const hitBoneId = findBoneAtPoint({ x, y }, rigging.bones);
+            if (hitBoneId) {
+              dispatch({ type: 'rigging_select_bone', boneId: hitBoneId });
+            }
             lastPointRef.current = { x, y };
             if (rigging.tool === 'draw') {
               dispatch({ type: 'rigging_start_draw', start: { x, y } });
             } else if (rigging.tool === 'move') {
-              dragBoneRef.current = rigging.selectedBoneId;
+              dragBoneRef.current = hitBoneId ?? rigging.selectedBoneId;
             } else if (rigging.tool === 'weight') {
-              dispatch({ type: 'rigging_paint_weight', x, y, radius: 1 });
+              dispatch({ type: 'rigging_paint_weight', x, y, radius: 1, boneId: hitBoneId ?? rigging.selectedBoneId });
             } else {
               dispatch({ type: 'rigging_ik_drag', target: { x, y } });
             }
@@ -484,9 +424,7 @@ export default function CanvasViewport() {
         }}
       />
       {workspaceMode === 'rigging' && (<RigOverlay rigging={rigging} zoomLevel={zoomLevel} width={width} height={height} wrapPreviewEnabled={wrapPreviewEnabled} metrics={overlayMetrics} />)}
-      {workspaceMode === 'shader' && (
-        <ShaderViewportControls lighting={lighting} material={material} zoomLevel={zoomLevel} overlayMetrics={overlayMetrics} dispatch={dispatch} />
-      )}
+      {workspaceMode === 'shader' && (<ShaderViewportControls lighting={lighting} material={material} zoomLevel={zoomLevel} overlayMetrics={overlayMetrics} />)}
       {workspaceMode === 'rigging' && rigging.draftBone && (
         <div
           className="rig-draft"

@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo } from 'react';
+import { Suspense, lazy, useMemo, useRef } from 'react';
 import {
   Eye,
   EyeOff,
@@ -33,6 +33,8 @@ export default function Inspector() {
     rigging,
     lighting,
     material,
+    width,
+    height,
     workspaceMode,
     frames,
     selectedFrameId
@@ -41,6 +43,40 @@ export default function Inspector() {
   const selectedLayer = layers.find((layer) => layer.id === selectedLayerId) ?? layers[0];
   const selectedBone = useMemo(() => rigging.bones.find((bone) => bone.id === (rigging.selectedBoneId ?? rigging.bones[0]?.id)), [rigging]);
   const selectedFrame = frames.find((frame) => frame.id === selectedFrameId) ?? frames[0];
+  const hdriInputRef = useRef(null);
+
+  const loadHdri = async (file) => {
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ''));
+        reader.onerror = () => reject(new Error('Failed to read HDRI file'));
+        reader.readAsDataURL(file);
+      });
+      const image = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Failed to decode HDRI image'));
+        img.src = dataUrl;
+      });
+      const sampleCanvas = document.createElement('canvas');
+      sampleCanvas.width = 64;
+      sampleCanvas.height = 1;
+      const ctx = sampleCanvas.getContext('2d');
+      if (!ctx) {
+        return;
+      }
+      ctx.drawImage(image, 0, 0, sampleCanvas.width, sampleCanvas.height);
+      const row = ctx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height).data;
+      const hdriSamples = Array.from({ length: sampleCanvas.width }, (_, index) => {
+        const pixel = index * 4;
+        return [row[pixel], row[pixel + 1], row[pixel + 2]];
+      });
+      dispatch({ type: 'lighting_set', updates: { hdriName: file.name, hdriDataUrl: dataUrl, hdriSamples } });
+    } catch {
+      // Ignore invalid files.
+    }
+  };
 
   return (
     <aside className="inspector" aria-label="Inspector panels">
@@ -108,6 +144,11 @@ export default function Inspector() {
             <button onClick={() => dispatch({ type: 'rigging_add_bone' })}><Plus size={14} />Bone</button>
           </div>
           <button onClick={() => dispatch({ type: 'rigging_keyframe_set' })}>Set Bone Keyframe (Pixel Perfect)</button>
+          <div className="layer-actions">
+            <button onClick={() => dispatch({ type: 'rigging_auto_skin_selected', radius: 7 })}>Auto Skin Selected</button>
+            <button onClick={() => dispatch({ type: 'rigging_auto_skin_all', radius: 8 })}>Auto Skin All</button>
+            <button onClick={() => dispatch({ type: 'rigging_clear_selected_weights' })}>Clear Weights</button>
+          </div>
           <ul className="layer-list">
             {rigging.bones.map((bone) => (
               <li key={bone.id} className={bone.id === selectedBone?.id ? 'layer-row selected' : 'layer-row'}>
@@ -122,6 +163,34 @@ export default function Inspector() {
       {workspaceMode === 'shader' && (
         <section className="panel">
           <h2><Sparkles size={14} /> Dynamic Light Shader</h2>
+          <div className="control-row">
+            <span>Lighting</span>
+            <button onClick={() => dispatch({ type: 'lighting_toggle' })}>{lighting.enabled ? 'On' : 'Off'}</button>
+          </div>
+          <div className="control-row">
+            <span>Mode</span>
+            <div className="segmented">
+              <button className={lighting.mode === 'point' ? 'active' : ''} onClick={() => dispatch({ type: 'lighting_set', updates: { mode: 'point' } })}>Point</button>
+              <button className={lighting.mode === 'global' ? 'active' : ''} onClick={() => dispatch({ type: 'lighting_set', updates: { mode: 'global' } })}>Global</button>
+            </div>
+          </div>
+          {lighting.mode === 'global' && (
+            <label className="control-row"><span>Direction</span><input type="range" min="0" max="360" value={lighting.direction} onChange={(e) => dispatch({ type: 'lighting_set', updates: { direction: Number(e.target.value) } })} /></label>
+          )}
+          {lighting.mode === 'point' && (
+            <>
+              <label className="control-row"><span>Light X</span><input type="number" min="0" max={Math.max(0, width - 1)} value={Math.round(lighting.position?.x ?? 0)} onChange={(e) => dispatch({ type: 'lighting_set', updates: { position: { ...(lighting.position ?? { x: 0, y: 0 }), x: Number(e.target.value) } } })} /></label>
+              <label className="control-row"><span>Light Y</span><input type="number" min="0" max={Math.max(0, height - 1)} value={Math.round(lighting.position?.y ?? 0)} onChange={(e) => dispatch({ type: 'lighting_set', updates: { position: { ...(lighting.position ?? { x: 0, y: 0 }), y: Number(e.target.value) } } })} /></label>
+            </>
+          )}
+          <label className="control-row"><span>Intensity</span><input type="range" min="0" max="1" step="0.01" value={lighting.intensity} onChange={(e) => dispatch({ type: 'lighting_set', updates: { intensity: Number(e.target.value) } })} /></label>
+          <label className="control-row"><span>Ambient</span><input type="range" min="0" max="1" step="0.01" value={lighting.ambient} onChange={(e) => dispatch({ type: 'lighting_set', updates: { ambient: Number(e.target.value) } })} /></label>
+          <label className="control-row"><span>Tint</span><input type="color" value={lighting.color} onChange={(e) => dispatch({ type: 'lighting_set', updates: { color: e.target.value } })} /></label>
+          <label className="control-row"><span>HDRI Mix</span><input type="range" min="0" max="1" step="0.01" value={lighting.hdriStrength ?? 0.6} onChange={(e) => dispatch({ type: 'lighting_set', updates: { hdriStrength: Number(e.target.value) } })} /></label>
+          <div className="layer-actions">
+            <button onClick={() => hdriInputRef.current?.click()}>Load HDRI</button>
+            <button onClick={() => dispatch({ type: 'lighting_set', updates: { hdriName: '', hdriDataUrl: '', hdriSamples: null } })} disabled={!lighting.hdriSamples}>Clear HDRI</button>
+          </div>
           <label className="control-row"><span>Emissive Strength</span><input type="range" min="0" max="1" step="0.01" value={material.emissiveStrength} onChange={(e) => dispatch({ type: 'material_set_strength', value: Number(e.target.value) })} /></label>
           <label className="control-row"><span>Roughness Strength</span><input type="range" min="0" max="1" step="0.01" value={material.roughnessStrength} onChange={(e) => dispatch({ type: 'material_set_roughness_strength', value: Number(e.target.value) })} /></label>
           <label className="control-row"><span>Metalness Strength</span><input type="range" min="0" max="1" step="0.01" value={material.metalnessStrength} onChange={(e) => dispatch({ type: 'material_set_metalness_strength', value: Number(e.target.value) })} /></label>
@@ -130,7 +199,20 @@ export default function Inspector() {
             <button onClick={() => dispatch({ type: 'material_clear_roughness' })}>Clear Roughness</button>
             <button onClick={() => dispatch({ type: 'material_clear_metalness' })}>Clear Metalness</button>
           </div>
-          <p className="subhead">Lighting controls now live on the viewport overlay so you can drag light points directly on-canvas. Active: {material.tool}. {lighting.hdriName ? `HDRI: ${lighting.hdriName}` : 'No HDRI loaded.'}</p>
+          <p className="subhead">Lighting controls are now in this right inspector panel. Drag light in-canvas with the Light tool for direct placement. Active: {material.tool}. {lighting.hdriName ? `HDRI: ${lighting.hdriName}` : 'No HDRI loaded.'}</p>
+          <input
+            ref={hdriInputRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(event) => {
+              const [file] = event.target.files ?? [];
+              if (file) {
+                loadHdri(file);
+              }
+              event.target.value = '';
+            }}
+          />
           <Suspense fallback={<p className="subhead">Loading 3D shader preview…</p>}><ThreePreview /></Suspense>
         </section>
       )}
