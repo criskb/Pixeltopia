@@ -1,13 +1,18 @@
 import { createContext, useContext, useEffect, useMemo, useReducer } from 'react';
 import {
+  addLayer,
   advancePlayhead,
   createFrameAfter,
   createProject,
   deleteFrame,
   duplicateFrame,
   getSelectedCel,
+  removeLayer,
   selectFrame,
   selectLayer,
+  setLayerBlendMode,
+  setLayerOpacity,
+  setFrameDuration,
   setOnionSkin,
   setPlayback,
   toggleLayerLock,
@@ -34,10 +39,81 @@ const AUTOSAVE_STORE = 'snapshots';
 const AUTOSAVE_INTERVAL_MS = 12_000;
 const DEFAULT_HISTORY_BUDGET_BYTES = 8 * 1024 * 1024;
 
+function createBone(name = 'Bone') {
+  return {
+    id: `bone_${Math.random().toString(36).slice(2, 9)}`,
+    name,
+    start: { x: 32, y: 32 },
+    end: { x: 32, y: 16 },
+    restStart: { x: 32, y: 32 },
+    restEnd: { x: 32, y: 16 }
+  };
+}
+
+function solveTwoBoneIK(bones, target) {
+  if (bones.length < 2) {
+    return bones;
+  }
+
+  const root = bones[0].start;
+  const l1 = Math.hypot(bones[0].end.x - bones[0].start.x, bones[0].end.y - bones[0].start.y) || 1;
+  const l2 = Math.hypot(bones[1].end.x - bones[1].start.x, bones[1].end.y - bones[1].start.y) || 1;
+  const dx = target.x - root.x;
+  const dy = target.y - root.y;
+  const dist = Math.min(Math.max(Math.hypot(dx, dy), 0.0001), l1 + l2 - 0.0001);
+
+  const a = Math.acos(Math.min(1, Math.max(-1, ((l1 * l1) + (dist * dist) - (l2 * l2)) / (2 * l1 * dist))));
+  const b = Math.atan2(dy, dx);
+  const mid = {
+    x: root.x + Math.cos(b - a) * l1,
+    y: root.y + Math.sin(b - a) * l1
+  };
+
+  const next = [...bones];
+  next[0] = { ...next[0], end: mid };
+  next[1] = { ...next[1], start: mid, end: { x: target.x, y: target.y } };
+  return next;
+}
+
+
+
+function createEmptyMask(width, height) {
+  return new Uint8Array(width * height);
+}
+
+function paintMask(mask, width, height, x, y, radius = 1) {
+  const next = new Uint8Array(mask);
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      const px = x + dx;
+      const py = y + dy;
+      if (px < 0 || py < 0 || px >= width || py >= height) {
+        continue;
+      }
+      next[py * width + px] = 255;
+    }
+  }
+  return next;
+}
+
+function eraseMask(mask, width, height, x, y, radius = 1) {
+  const next = new Uint8Array(mask);
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      const px = x + dx;
+      const py = y + dy;
+      if (px < 0 || py < 0 || px >= width || py >= height) {
+        continue;
+      }
+      next[py * width + px] = 0;
+    }
+  }
+  return next;
+}
 const initialProject = createProject({
   width: 64,
   height: 64,
-  layerNames: ['FX', 'Line Art', 'Base Colors', 'Background'],
+  layerNames: ['Layer 1'],
   frameCount: 12,
   createPixelBuffer
 });
@@ -47,12 +123,38 @@ export const initialState = {
   currentColor: '#7C5CFF',
   brushSize: 1,
   activeTool: 'pencil',
+  workspaceMode: 'draw',
   zoomLevel: 8,
   cursor: { x: 0, y: 0 },
   selectionMask: null,
   selectionType: null,
   wrapPreviewEnabled: false,
   wrapOffset: { x: 0, y: 0 },
+  rigging: {
+    enabled: false,
+    tool: 'draw',
+    bones: [createBone('Root')],
+    selectedBoneId: null,
+    draftBone: null,
+    weights: {},
+    keyframes: {}
+  },
+  lighting: {
+    enabled: false,
+    direction: 40,
+    intensity: 0.7,
+    ambient: 0.35,
+    color: '#ffd38a'
+  },
+  material: {
+    tool: 'light',
+    emissiveMask: createEmptyMask(initialProject.width, initialProject.height),
+    roughnessMask: createEmptyMask(initialProject.width, initialProject.height),
+    metalnessMask: createEmptyMask(initialProject.width, initialProject.height),
+    emissiveStrength: 0.6,
+    roughnessStrength: 0.6,
+    metalnessStrength: 0.35
+  },
   history: {
     undoStack: [],
     redoStack: [],
@@ -226,6 +328,16 @@ function runMutation(state, action) {
       return { ...state, project: duplicateFrame(state.project) };
     case 'frame_delete':
       return { ...state, project: deleteFrame(state.project) };
+    case 'frame_set_duration':
+      return { ...state, project: setFrameDuration(state.project, action.frameId ?? state.project.selectedFrameId, action.duration) };
+    case 'layer_create':
+      return { ...state, project: addLayer(state.project, { createPixelBuffer, name: action.name }) };
+    case 'layer_delete':
+      return { ...state, project: removeLayer(state.project, action.layerId) };
+    case 'layer_set_blend_mode':
+      return { ...state, project: setLayerBlendMode(state.project, action.layerId, action.blendMode) };
+    case 'layer_set_opacity':
+      return { ...state, project: setLayerOpacity(state.project, action.layerId, action.opacity) };
     default:
       return state;
   }
@@ -279,7 +391,15 @@ function toAutosaveSnapshot(state) {
       activeTool: state.activeTool,
       zoomLevel: state.zoomLevel,
       wrapPreviewEnabled: state.wrapPreviewEnabled,
-      wrapOffset: state.wrapOffset
+      wrapOffset: state.wrapOffset,
+      rigging: state.rigging,
+      lighting: state.lighting,
+      material: {
+        ...state.material,
+        emissiveMask: Array.from(state.material.emissiveMask),
+        roughnessMask: Array.from(state.material.roughnessMask),
+        metalnessMask: Array.from(state.material.metalnessMask)
+      }
     }
   };
 }
@@ -288,6 +408,13 @@ function fromAutosaveSnapshot(snapshot) {
   return {
     ...initialState,
     ...snapshot.ui,
+    material: snapshot.ui?.material ? {
+      ...initialState.material,
+      ...snapshot.ui.material,
+      emissiveMask: new Uint8Array(snapshot.ui.material.emissiveMask ?? initialState.material.emissiveMask),
+      roughnessMask: new Uint8Array(snapshot.ui.material.roughnessMask ?? initialState.material.roughnessMask),
+      metalnessMask: new Uint8Array(snapshot.ui.material.metalnessMask ?? initialState.material.metalnessMask)
+    } : initialState.material,
     project: deserializeProject(snapshot.project),
     history: {
       ...initialState.history,
@@ -446,6 +573,8 @@ export function editorReducer(state, action) {
     }
     case 'set_active_tool':
       return { ...state, activeTool: action.tool };
+    case 'set_workspace_mode':
+      return { ...state, workspaceMode: action.mode };
     case 'set_color':
       return { ...state, currentColor: action.color };
     case 'set_zoom':
@@ -474,6 +603,125 @@ export function editorReducer(state, action) {
       return { ...state, wrapPreviewEnabled: !state.wrapPreviewEnabled };
     case 'wrap_offset_set':
       return { ...state, wrapOffset: action.offset };
+    case 'rigging_toggle':
+      return { ...state, rigging: { ...state.rigging, enabled: !state.rigging.enabled } };
+    case 'rigging_set_tool':
+      return { ...state, rigging: { ...state.rigging, tool: action.tool } };
+    case 'rigging_start_draw':
+      return { ...state, rigging: { ...state.rigging, draftBone: { start: action.start, end: action.start } } };
+    case 'rigging_update_draw':
+      return state.rigging.draftBone ? { ...state, rigging: { ...state.rigging, draftBone: { ...state.rigging.draftBone, end: action.end } } } : state;
+    case 'rigging_commit_draw': {
+      if (!state.rigging.draftBone) {
+        return state;
+      }
+      const selected = state.rigging.bones.find((bone) => bone.id === state.rigging.selectedBoneId);
+      const start = action.connect && selected ? { ...selected.end } : state.rigging.draftBone.start;
+      const end = state.rigging.draftBone.end;
+      const bone = createBone(`Bone ${state.rigging.bones.length + 1}`);
+      bone.start = start;
+      bone.end = end;
+      bone.restStart = { ...start };
+      bone.restEnd = { ...end };
+      return { ...state, rigging: { ...state.rigging, bones: [...state.rigging.bones, bone], selectedBoneId: bone.id, draftBone: null } };
+    }
+    case 'rigging_move_bone':
+      return {
+        ...state,
+        rigging: {
+          ...state.rigging,
+          bones: state.rigging.bones.map((bone) => bone.id === action.boneId ? {
+            ...bone,
+            start: { x: Math.round(bone.start.x + action.dx), y: Math.round(bone.start.y + action.dy) },
+            end: { x: Math.round(bone.end.x + action.dx), y: Math.round(bone.end.y + action.dy) }
+          } : bone)
+        }
+      };
+    case 'rigging_paint_weight': {
+      const boneId = action.boneId ?? state.rigging.selectedBoneId;
+      if (!boneId) {
+        return state;
+      }
+      const currentMask = state.rigging.weights[boneId] ?? createEmptyMask(state.project.width, state.project.height);
+      const nextMask = paintMask(currentMask, state.project.width, state.project.height, action.x, action.y, action.radius ?? 1);
+      return { ...state, rigging: { ...state.rigging, weights: { ...state.rigging.weights, [boneId]: nextMask } } };
+    }
+    case 'rigging_keyframe_set': {
+      const boneId = action.boneId ?? state.rigging.selectedBoneId;
+      const bone = state.rigging.bones.find((item) => item.id === boneId);
+      if (!bone) {
+        return state;
+      }
+      const dx = Math.round(bone.end.x - bone.restEnd.x);
+      const dy = Math.round(bone.end.y - bone.restEnd.y);
+      const frameId = state.project.selectedFrameId;
+      return {
+        ...state,
+        rigging: {
+          ...state.rigging,
+          keyframes: {
+            ...state.rigging.keyframes,
+            [frameId]: {
+              ...(state.rigging.keyframes[frameId] ?? {}),
+              [boneId]: { dx, dy }
+            }
+          }
+        }
+      };
+    }
+    case 'rigging_add_bone': {
+      const bone = createBone(action.name || `Bone ${state.rigging.bones.length + 1}`);
+      return { ...state, rigging: { ...state.rigging, bones: [...state.rigging.bones, bone], selectedBoneId: bone.id } };
+    }
+    case 'rigging_select_bone':
+      return { ...state, rigging: { ...state.rigging, selectedBoneId: action.boneId } };
+    case 'rigging_delete_bone': {
+      if (state.rigging.bones.length <= 1) {
+        return state;
+      }
+      const bones = state.rigging.bones.filter((bone) => bone.id !== action.boneId);
+      return { ...state, rigging: { ...state.rigging, bones, selectedBoneId: bones[0]?.id ?? null } };
+    }
+    case 'rigging_update_bone':
+      return {
+        ...state,
+        rigging: {
+          ...state.rigging,
+          bones: state.rigging.bones.map((bone) => bone.id === action.boneId ? { ...bone, ...action.updates } : bone)
+        }
+      };
+    case 'rigging_ik_drag':
+      return { ...state, rigging: { ...state.rigging, bones: solveTwoBoneIK(state.rigging.bones, action.target) } };
+    case 'lighting_toggle':
+      return { ...state, lighting: { ...state.lighting, enabled: !state.lighting.enabled } };
+    case 'lighting_set':
+      return { ...state, lighting: { ...state.lighting, ...action.updates } };
+    case 'material_set_tool':
+      return { ...state, material: { ...state.material, tool: action.tool } };
+    case 'material_set_strength':
+      return { ...state, material: { ...state.material, emissiveStrength: action.value } };
+    case 'material_set_roughness_strength':
+      return { ...state, material: { ...state.material, roughnessStrength: action.value } };
+    case 'material_set_metalness_strength':
+      return { ...state, material: { ...state.material, metalnessStrength: action.value } };
+    case 'material_clear_emissive':
+      return { ...state, material: { ...state.material, emissiveMask: createEmptyMask(state.project.width, state.project.height) } };
+    case 'material_clear_roughness':
+      return { ...state, material: { ...state.material, roughnessMask: createEmptyMask(state.project.width, state.project.height) } };
+    case 'material_clear_metalness':
+      return { ...state, material: { ...state.material, metalnessMask: createEmptyMask(state.project.width, state.project.height) } };
+    case 'material_paint': {
+      const tool = state.material.tool;
+      const target = tool === 'roughness' ? 'roughnessMask' : tool === 'metalness' ? 'metalnessMask' : 'emissiveMask';
+      const mask = paintMask(state.material[target], state.project.width, state.project.height, action.x, action.y, action.radius ?? 1);
+      return { ...state, material: { ...state.material, [target]: mask } };
+    }
+    case 'material_erase': {
+      const tool = state.material.tool;
+      const target = tool === 'roughness-erase' ? 'roughnessMask' : tool === 'metalness-erase' ? 'metalnessMask' : 'emissiveMask';
+      const mask = eraseMask(state.material[target], state.project.width, state.project.height, action.x, action.y, action.radius ?? 1);
+      return { ...state, material: { ...state.material, [target]: mask } };
+    }
     case 'frame_select':
       return { ...state, project: selectFrame(state.project, action.frameId) };
     case 'layer_toggle_visibility':
@@ -499,6 +747,11 @@ export function editorReducer(state, action) {
     case 'frame_create':
     case 'frame_duplicate':
     case 'frame_delete':
+    case 'frame_set_duration':
+    case 'layer_create':
+    case 'layer_delete':
+    case 'layer_set_blend_mode':
+    case 'layer_set_opacity':
       return buildCommandResult(state, runMutation(state, action), action.type);
     default:
       return state;
@@ -539,10 +792,12 @@ export function EditorProvider({ children }) {
       return undefined;
     }
 
-    const ms = 1000 / Math.max(1, state.project.playback.fps);
+    const frame = state.project.frames.find((item) => item.id === state.project.selectedFrameId);
+    const frameDuration = Math.max(1, frame?.duration ?? 1);
+    const ms = (1000 / Math.max(1, state.project.playback.fps)) * frameDuration;
     const timer = setInterval(() => dispatch({ type: 'playback_advance', step: 1 }), ms);
     return () => clearInterval(timer);
-  }, [state.project.playback.fps, state.project.playback.isPlaying]);
+  }, [state.project.frames, state.project.selectedFrameId, state.project.playback.fps, state.project.playback.isPlaying]);
 
   useEffect(() => {
     const timer = setInterval(() => {
