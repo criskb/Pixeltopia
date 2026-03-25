@@ -1,0 +1,16 @@
+{
+  "name": "pixeltopia",
+  "private": true,
+  "version": "0.1.0",
+  "description": "PixelForge monorepo scaffold",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev --workspace @pixelforge/server",
+    "start:server": "npm run start --workspace @pixelforge/server",
+    "lint": "echo 'lint not configured yet'",
+    "test": "npm run test --workspace @pixelforge/server"
+  }
+}
