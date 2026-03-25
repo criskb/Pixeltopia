@@ -12,7 +12,11 @@
     "start:server": "npm run start --workspace @pixelforge/server",
     "dev:web": "npm run dev --workspace @pixelforge/web",
     "build:web": "npm run build --workspace @pixelforge/web",
+    "smoke:web": "node apps/web/scripts/smoke-lighting-panel.mjs",
     "lint": "echo 'lint not configured yet'",
     "test": "npm run test --workspace @pixelforge/server"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
   }
 }
