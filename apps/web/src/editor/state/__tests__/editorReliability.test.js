@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import { getSelectedCel } from '@pixelforge/domain';
 import { createPixelBuffer, setPixel, getPixel } from '../../canvas/pixelBuffer';
 import {
+  createWorkspacePolishPlan,
   editorReducer,
   initialState,
   loadAutosaveSnapshot,
@@ -64,5 +65,70 @@ describe('editor reliability layer', () => {
     const restored = editorReducer(state, { type: 'hydrate_from_snapshot', snapshot });
     const restoredCel = getSelectedCel(restored.project);
     expect(getPixel(restoredCel.pixelBuffer, 4, 5)).toEqual([12, 34, 56, 255]);
+  });
+
+  it('resets editor state while preserving custom undo budget', () => {
+    let state = freshState();
+    state = editorReducer(state, { type: 'history_set_budget', budgetBytes: 3 * 1024 * 1024 });
+
+    const drawBuffer = createPixelBuffer(state.project.width, state.project.height);
+    setPixel(drawBuffer, 1, 1, [10, 20, 30, 255]);
+    state = editorReducer(state, { type: 'update_pixels', pixelBuffer: drawBuffer });
+
+    const reset = editorReducer(state, { type: 'project_reset' });
+    const resetCel = getSelectedCel(reset.project);
+
+    expect(reset.history.budgetBytes).toBe(3 * 1024 * 1024);
+    expect(reset.history.undoStack).toHaveLength(0);
+    expect(getPixel(resetCel.pixelBuffer, 1, 1)).toEqual([0, 0, 0, 0]);
+  });
+
+  it('builds mode-aware polish plans', () => {
+    const drawPlan = createWorkspacePolishPlan({
+      ...initialState,
+      workspaceMode: 'draw',
+      wrapPreviewEnabled: false,
+      zoomLevel: 8
+    });
+    expect(drawPlan.actions).toEqual([
+      { type: 'wrap_preview_toggle' },
+      { type: 'set_zoom', zoom: 12 }
+    ]);
+
+    const animatePlan = createWorkspacePolishPlan({
+      ...initialState,
+      workspaceMode: 'animate',
+      project: {
+        ...initialState.project,
+        onionSkin: { ...initialState.project.onionSkin, enabled: false },
+        playback: { ...initialState.project.playback, fps: 10 }
+      }
+    });
+    expect(animatePlan.actions).toEqual([
+      { type: 'onion_toggle' },
+      { type: 'playback_set_fps', fps: 12 }
+    ]);
+  });
+
+  it('supports shader material value painting and auto height generation', () => {
+    let state = freshState();
+    const drawBuffer = createPixelBuffer(state.project.width, state.project.height);
+    setPixel(drawBuffer, 3, 3, [200, 180, 160, 255]);
+    state = editorReducer(state, { type: 'update_pixels', pixelBuffer: drawBuffer });
+    state = editorReducer(state, { type: 'material_set_tool', tool: 'metalness' });
+    state = editorReducer(state, { type: 'material_paint', x: 3, y: 3, radius: 0, value: 0.4 });
+    const pixelIndex = (3 * state.project.width) + 3;
+    expect(state.material.metalnessMask[pixelIndex]).toBe(Math.round(255 * 0.4));
+
+    state = editorReducer(state, { type: 'material_generate_height_from_sprite', gain: 1 });
+    expect(state.material.heightMask.some((value) => value > 0)).toBe(true);
+
+    state = editorReducer(state, { type: 'material_generate_roughness_from_sprite', gain: 1, invert: true });
+    state = editorReducer(state, { type: 'material_generate_metalness_from_sprite', gain: 1, invert: false });
+    expect(state.material.roughnessMask.some((value) => value > 0)).toBe(true);
+    expect(state.material.metalnessMask.some((value) => value > 0)).toBe(true);
+
+    state = editorReducer(state, { type: 'material_apply_preset', preset: 'brushed_metal' });
+    expect(state.material.metalnessStrength).toBeGreaterThan(0.8);
   });
 });

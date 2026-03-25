@@ -81,7 +81,7 @@ function createEmptyMask(width, height) {
   return new Uint8Array(width * height);
 }
 
-function paintMask(mask, width, height, x, y, radius = 1) {
+function paintMask(mask, width, height, x, y, radius = 1, value = 255) {
   const next = new Uint8Array(mask);
   for (let dy = -radius; dy <= radius; dy += 1) {
     for (let dx = -radius; dx <= radius; dx += 1) {
@@ -90,7 +90,7 @@ function paintMask(mask, width, height, x, y, radius = 1) {
       if (px < 0 || py < 0 || px >= width || py >= height) {
         continue;
       }
-      next[py * width + px] = 255;
+      next[py * width + px] = Math.max(next[py * width + px], value);
     }
   }
   return next;
@@ -137,6 +137,39 @@ function createAutoSkinMask(width, height, bone, radius = 6) {
         mask[idx] = Math.max(mask[idx], strength);
       }
     }
+  }
+  return mask;
+}
+
+function createHeightMaskFromSelectedCel(project, gain = 1) {
+  const selectedCel = getSelectedCel(project);
+  const source = selectedCel?.pixelBuffer?.data;
+  if (!source) {
+    return createEmptyMask(project.width, project.height);
+  }
+  const mask = new Uint8Array(project.width * project.height);
+  for (let i = 0; i < project.width * project.height; i += 1) {
+    const px = i * 4;
+    const luminance = (0.2126 * source[px] + 0.7152 * source[px + 1] + 0.0722 * source[px + 2]) / 255;
+    const alpha = source[px + 3] / 255;
+    mask[i] = Math.round(255 * Math.max(0, Math.min(1, luminance * alpha * gain)));
+  }
+  return mask;
+}
+
+function createChannelMaskFromSelectedCel(project, { gain = 1, invert = false } = {}) {
+  const selectedCel = getSelectedCel(project);
+  const source = selectedCel?.pixelBuffer?.data;
+  if (!source) {
+    return createEmptyMask(project.width, project.height);
+  }
+  const mask = new Uint8Array(project.width * project.height);
+  for (let i = 0; i < project.width * project.height; i += 1) {
+    const px = i * 4;
+    const luminance = (0.2126 * source[px] + 0.7152 * source[px + 1] + 0.0722 * source[px + 2]) / 255;
+    const alpha = source[px + 3] / 255;
+    const normalized = invert ? (1 - luminance) : luminance;
+    mask[i] = Math.round(255 * Math.max(0, Math.min(1, normalized * alpha * gain)));
   }
   return mask;
 }
@@ -187,12 +220,21 @@ export const initialState = {
   },
   material: {
     tool: 'light',
+    previewMode: 'lit',
+    brushRadius: 1,
     emissiveMask: createEmptyMask(initialProject.width, initialProject.height),
     roughnessMask: createEmptyMask(initialProject.width, initialProject.height),
     metalnessMask: createEmptyMask(initialProject.width, initialProject.height),
+    heightMask: createEmptyMask(initialProject.width, initialProject.height),
     emissiveStrength: 0.6,
     roughnessStrength: 0.6,
-    metalnessStrength: 0.35
+    metalnessStrength: 0.35,
+    heightStrength: 0.35,
+    normalStrength: 0.8,
+    emissivePaintValue: 1,
+    roughnessPaintValue: 0.7,
+    metalnessPaintValue: 0.65,
+    heightPaintValue: 0.5
   },
   history: {
     undoStack: [],
@@ -201,6 +243,50 @@ export const initialState = {
     budgetBytes: DEFAULT_HISTORY_BUDGET_BYTES
   }
 };
+
+const MATERIAL_PRESETS = {
+  matte_paint: {
+    roughnessStrength: 0.9,
+    metalnessStrength: 0.05,
+    heightStrength: 0.2,
+    normalStrength: 0.55,
+    roughnessPaintValue: 0.85,
+    metalnessPaintValue: 0.1
+  },
+  brushed_metal: {
+    roughnessStrength: 0.45,
+    metalnessStrength: 0.9,
+    heightStrength: 0.25,
+    normalStrength: 0.9,
+    roughnessPaintValue: 0.35,
+    metalnessPaintValue: 0.9
+  },
+  glossy_plastic: {
+    roughnessStrength: 0.25,
+    metalnessStrength: 0.08,
+    heightStrength: 0.15,
+    normalStrength: 0.7,
+    roughnessPaintValue: 0.2,
+    metalnessPaintValue: 0.05
+  },
+  emissive_fx: {
+    emissiveStrength: 1,
+    roughnessStrength: 0.4,
+    metalnessStrength: 0.15,
+    heightStrength: 0.1,
+    emissivePaintValue: 1
+  }
+};
+
+function createDefaultState(historyBudgetBytes = getHistoryBudget()) {
+  return {
+    ...initialState,
+    history: {
+      ...initialState.history,
+      budgetBytes: historyBudgetBytes
+    }
+  };
+}
 
 function getHistoryBudget() {
   if (typeof window === 'undefined') {
@@ -437,7 +523,8 @@ function toAutosaveSnapshot(state) {
         ...state.material,
         emissiveMask: Array.from(state.material.emissiveMask),
         roughnessMask: Array.from(state.material.roughnessMask),
-        metalnessMask: Array.from(state.material.metalnessMask)
+        metalnessMask: Array.from(state.material.metalnessMask),
+        heightMask: Array.from(state.material.heightMask)
       }
     }
   };
@@ -452,7 +539,8 @@ function fromAutosaveSnapshot(snapshot) {
       ...snapshot.ui.material,
       emissiveMask: new Uint8Array(snapshot.ui.material.emissiveMask ?? initialState.material.emissiveMask),
       roughnessMask: new Uint8Array(snapshot.ui.material.roughnessMask ?? initialState.material.roughnessMask),
-      metalnessMask: new Uint8Array(snapshot.ui.material.metalnessMask ?? initialState.material.metalnessMask)
+      metalnessMask: new Uint8Array(snapshot.ui.material.metalnessMask ?? initialState.material.metalnessMask),
+      heightMask: new Uint8Array(snapshot.ui.material.heightMask ?? initialState.material.heightMask)
     } : initialState.material,
     project: deserializeProject(snapshot.project),
     history: {
@@ -541,8 +629,51 @@ export async function persistAutosaveSnapshot(state) {
   await saveToIndexedDb(snapshot);
 }
 
+export function createWorkspacePolishPlan(state) {
+  switch (state.workspaceMode) {
+    case 'draw': {
+      const actions = [];
+      if (!state.wrapPreviewEnabled) {
+        actions.push({ type: 'wrap_preview_toggle' });
+      }
+      if (state.zoomLevel < 12) {
+        actions.push({ type: 'set_zoom', zoom: 12 });
+      }
+      return { actions, message: 'Draw polish applied: wrap preview on, zoom set for detail.' };
+    }
+    case 'animate': {
+      const actions = [];
+      if (!state.project.onionSkin.enabled) {
+        actions.push({ type: 'onion_toggle' });
+      }
+      if (state.project.playback.fps < 12) {
+        actions.push({ type: 'playback_set_fps', fps: 12 });
+      }
+      return { actions, message: 'Animate polish applied: onion skin on, fps floor set to 12.' };
+    }
+    case 'rigging': {
+      const actions = [];
+      if (!state.rigging.enabled) {
+        actions.push({ type: 'rigging_toggle' });
+      }
+      actions.push({ type: 'rigging_set_tool', tool: 'move' });
+      return { actions, message: 'Rig polish applied: rigging enabled and move tool armed.' };
+    }
+    default: {
+      const actions = [];
+      if (!state.lighting.enabled) {
+        actions.push({ type: 'lighting_toggle' });
+      }
+      actions.push({ type: 'lighting_set', updates: { intensity: Math.max(state.lighting.intensity, 0.75) } });
+      return { actions, message: 'Shader polish applied: lighting boosted for preview.' };
+    }
+  }
+}
+
 export function editorReducer(state, action) {
   switch (action.type) {
+    case 'project_reset':
+      return createDefaultState(state.history.budgetBytes);
     case 'hydrate_from_snapshot':
       return action.snapshot ? fromAutosaveSnapshot(action.snapshot) : state;
     case 'history_set_budget': {
@@ -791,27 +922,89 @@ export function editorReducer(state, action) {
       return { ...state, lighting: { ...state.lighting, ...action.updates } };
     case 'material_set_tool':
       return { ...state, material: { ...state.material, tool: action.tool } };
+    case 'material_set_preview_mode':
+      return { ...state, material: { ...state.material, previewMode: action.mode ?? 'lit' } };
+    case 'material_apply_preset': {
+      const preset = MATERIAL_PRESETS[action.preset];
+      if (!preset) {
+        return state;
+      }
+      return {
+        ...state,
+        material: {
+          ...state.material,
+          ...preset
+        }
+      };
+    }
+    case 'material_set_brush_radius':
+      return { ...state, material: { ...state.material, brushRadius: Math.max(1, Math.min(16, action.radius ?? 1)) } };
     case 'material_set_strength':
       return { ...state, material: { ...state.material, emissiveStrength: action.value } };
     case 'material_set_roughness_strength':
       return { ...state, material: { ...state.material, roughnessStrength: action.value } };
     case 'material_set_metalness_strength':
       return { ...state, material: { ...state.material, metalnessStrength: action.value } };
+    case 'material_set_height_strength':
+      return { ...state, material: { ...state.material, heightStrength: action.value } };
+    case 'material_set_normal_strength':
+      return { ...state, material: { ...state.material, normalStrength: action.value } };
+    case 'material_set_paint_value':
+      return { ...state, material: { ...state.material, [action.channel]: Math.max(0, Math.min(1, action.value ?? 0)) } };
+    case 'material_generate_height_from_sprite':
+      return {
+        ...state,
+        material: {
+          ...state.material,
+          heightMask: createHeightMaskFromSelectedCel(state.project, action.gain ?? 1)
+        }
+      };
+    case 'material_generate_roughness_from_sprite':
+      return {
+        ...state,
+        material: {
+          ...state.material,
+          roughnessMask: createChannelMaskFromSelectedCel(state.project, { gain: action.gain ?? 1, invert: Boolean(action.invert) })
+        }
+      };
+    case 'material_generate_metalness_from_sprite':
+      return {
+        ...state,
+        material: {
+          ...state.material,
+          metalnessMask: createChannelMaskFromSelectedCel(state.project, { gain: action.gain ?? 1, invert: Boolean(action.invert) })
+        }
+      };
     case 'material_clear_emissive':
       return { ...state, material: { ...state.material, emissiveMask: createEmptyMask(state.project.width, state.project.height) } };
     case 'material_clear_roughness':
       return { ...state, material: { ...state.material, roughnessMask: createEmptyMask(state.project.width, state.project.height) } };
     case 'material_clear_metalness':
       return { ...state, material: { ...state.material, metalnessMask: createEmptyMask(state.project.width, state.project.height) } };
+    case 'material_clear_height':
+      return { ...state, material: { ...state.material, heightMask: createEmptyMask(state.project.width, state.project.height) } };
     case 'material_paint': {
       const tool = state.material.tool;
-      const target = tool === 'roughness' ? 'roughnessMask' : tool === 'metalness' ? 'metalnessMask' : 'emissiveMask';
-      const mask = paintMask(state.material[target], state.project.width, state.project.height, action.x, action.y, action.radius ?? 1);
+      const target = tool === 'roughness'
+        ? 'roughnessMask'
+        : tool === 'metalness'
+          ? 'metalnessMask'
+          : tool === 'height'
+            ? 'heightMask'
+            : 'emissiveMask';
+      const value = Math.round(255 * Math.max(0, Math.min(1, action.value ?? 1)));
+      const mask = paintMask(state.material[target], state.project.width, state.project.height, action.x, action.y, action.radius ?? 1, value);
       return { ...state, material: { ...state.material, [target]: mask } };
     }
     case 'material_erase': {
       const tool = state.material.tool;
-      const target = tool === 'roughness-erase' ? 'roughnessMask' : tool === 'metalness-erase' ? 'metalnessMask' : 'emissiveMask';
+      const target = tool === 'roughness-erase'
+        ? 'roughnessMask'
+        : tool === 'metalness-erase'
+          ? 'metalnessMask'
+          : tool === 'height-erase'
+            ? 'heightMask'
+            : 'emissiveMask';
       const mask = eraseMask(state.material[target], state.project.width, state.project.height, action.x, action.y, action.radius ?? 1);
       return { ...state, material: { ...state.material, [target]: mask } };
     }
@@ -852,13 +1045,7 @@ export function editorReducer(state, action) {
 }
 
 export function EditorProvider({ children }) {
-  const [state, dispatch] = useReducer(editorReducer, {
-    ...initialState,
-    history: {
-      ...initialState.history,
-      budgetBytes: getHistoryBudget()
-    }
-  });
+  const [state, dispatch] = useReducer(editorReducer, createDefaultState());
 
   useEffect(() => {
     let cancelled = false;
