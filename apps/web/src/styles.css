@@ -324,3 +324,51 @@ button:focus-visible {
   border: 1px solid #00121b;
   background: #00c2ff;
 }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 8, 14, 0.72);
+  display: grid;
+  place-items: center;
+  z-index: 30;
+}
+
+.modal-card {
+  width: min(520px, 92vw);
+  background: var(--bg-panel);
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.modal-card h2 {
+  margin: 0;
+}
+
+.modal-card .control-row {
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-card .control-row input,
+.modal-card .control-row select {
+  min-width: 230px;
+  color: var(--text-primary);
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.checkbox-row {
+  justify-content: flex-start;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

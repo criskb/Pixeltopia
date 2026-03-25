@@ -1,5 +1,19 @@
 {
   "name": "@pixelforge/io",
   "version": "0.1.0",
-  "private": true
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4",
+    "@pixelforge/domain": "file:../domain"
+  }
 }
