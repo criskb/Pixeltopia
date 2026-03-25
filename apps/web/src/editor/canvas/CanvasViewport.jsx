@@ -74,6 +74,37 @@ function SelectionOverlay({ bounds, zoomLevel, wrapPreviewEnabled, width, height
   );
 }
 
+
+function RigOverlay({ rigging, zoomLevel, width, height, wrapPreviewEnabled }) {
+  if (!rigging?.enabled) {
+    return null;
+  }
+
+  const offset = wrapPreviewEnabled ? { x: width, y: height } : { x: 0, y: 0 };
+
+  return (
+    <div className="rig-overlay" aria-hidden="true">
+      {rigging.bones.map((bone) => {
+        const x1 = (bone.start.x + offset.x) * zoomLevel;
+        const y1 = (bone.start.y + offset.y) * zoomLevel;
+        const x2 = (bone.end.x + offset.x) * zoomLevel;
+        const y2 = (bone.end.y + offset.y) * zoomLevel;
+        const length = Math.hypot(x2 - x1, y2 - y1);
+        const angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
+        const selected = rigging.selectedBoneId === bone.id;
+
+        return (
+          <div key={bone.id} className={selected ? 'rig-bone selected' : 'rig-bone'} style={{ left: x1, top: y1 }}>
+            <span className="rig-joint start" />
+            <span className="rig-segment" style={{ width: length, transform: `rotate(${angle}deg)` }} />
+            <span className="rig-joint end" style={{ left: x2 - x1, top: y2 - y1 }} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function CanvasViewport() {
   const canvasRef = useRef(null);
   const lassoRef = useRef([]);
@@ -90,7 +121,10 @@ export default function CanvasViewport() {
     wrapPreviewEnabled,
     wrapOffset,
     width,
-    height
+    height,
+    rigging,
+    lighting,
+    workspaceMode
   } = useEditorState();
   const dispatch = useEditorDispatch();
   const [isDrawing, setIsDrawing] = useState(false);
@@ -100,7 +134,7 @@ export default function CanvasViewport() {
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    const renderBuffer = renderCanvasBuffer(project);
+    const renderBuffer = renderCanvasBuffer(project, lighting);
     const displayBuffer = wrapPreviewEnabled ? renderWrapPreviewBuffer(renderBuffer, wrapOffset) : renderBuffer;
 
     canvas.width = displayBuffer.width;
@@ -111,9 +145,13 @@ export default function CanvasViewport() {
 
     const imageData = new ImageData(displayBuffer.data, displayBuffer.width, displayBuffer.height);
     ctx.putImageData(imageData, 0, 0);
-  }, [project, zoomLevel, wrapPreviewEnabled, wrapOffset]);
+  }, [project, lighting, zoomLevel, wrapPreviewEnabled, wrapOffset]);
 
   function applyPointerAction(event) {
+    if (workspaceMode !== 'draw') {
+      return;
+    }
+
     const activeLayer = project.layers.find((layer) => layer.id === selectedLayerId);
     if (activeLayer?.locked) {
       return;
@@ -155,6 +193,13 @@ export default function CanvasViewport() {
         onPointerDown={(event) => {
           setIsDrawing(true);
           const { x, y } = getCanvasPixel(event, canvasRef.current, zoomLevel, wrapPreviewEnabled, width, height);
+          if (workspaceMode === 'rigging') {
+            if (!rigging.enabled) {
+              dispatch({ type: 'rigging_toggle' });
+            }
+            dispatch({ type: 'rigging_ik_drag', target: { x, y } });
+            return;
+          }
           if (activeTool === 'select-rect') {
             rectStartRef.current = { x, y };
           }
@@ -165,6 +210,11 @@ export default function CanvasViewport() {
         }}
         onPointerMove={(event) => {
           const point = getCanvasPixel(event, canvasRef.current, zoomLevel, wrapPreviewEnabled, width, height);
+          if (workspaceMode === 'rigging' && isDrawing) {
+            dispatch({ type: 'rigging_ik_drag', target: { x: point.x, y: point.y } });
+            return;
+          }
+
           if (isDrawing && activeTool === 'select-lasso') {
             lassoRef.current.push({ x: point.x, y: point.y });
           }
@@ -193,6 +243,7 @@ export default function CanvasViewport() {
           lassoRef.current = [];
         }}
       />
+      <RigOverlay rigging={rigging} zoomLevel={zoomLevel} width={width} height={height} wrapPreviewEnabled={wrapPreviewEnabled} />
       <SelectionOverlay bounds={selectionBounds} zoomLevel={zoomLevel} wrapPreviewEnabled={wrapPreviewEnabled} width={width} height={height} />
     </div>
   );
