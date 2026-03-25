@@ -207,6 +207,7 @@ function applyLighting(buffer, lighting) {
   const lightPosition = lighting.position ?? { x: Math.round(lit.width * 0.75), y: Math.round(lit.height * 0.25) };
   const hdriSamples = Array.isArray(lighting.hdriSamples) ? lighting.hdriSamples : null;
   const hdriStrength = Math.max(0, Math.min(1, lighting.hdriStrength ?? 0.6));
+  const hdriRotation = ((lighting.hdriRotation ?? 0) / 360);
   const lightTint = lighting.color ?? '#ffd38a';
   const tint = [
     Number.parseInt(lightTint.slice(1, 3), 16),
@@ -252,7 +253,8 @@ function applyLighting(buffer, lighting) {
         const refX = mode === 'global' ? lightVector.x : (lightPosition.x - x);
         const refY = mode === 'global' ? lightVector.y : (lightPosition.y - y);
         const envAngle = (Math.atan2(normalY + refY, normalX + refX) + Math.PI) / (Math.PI * 2);
-        const sampleIndex = Math.floor(envAngle * hdriSamples.length) % hdriSamples.length;
+        const rotatedAngle = ((envAngle + hdriRotation) % 1 + 1) % 1;
+        const sampleIndex = Math.floor(rotatedAngle * hdriSamples.length) % hdriSamples.length;
         envTint = hdriSamples[sampleIndex] ?? tint;
       }
       const mixedTint = [
@@ -260,10 +262,20 @@ function applyLighting(buffer, lighting) {
         tint[1] * (1 - hdriStrength) + envTint[1] * hdriStrength,
         tint[2] * (1 - hdriStrength) + envTint[2] * hdriStrength
       ];
+      const baseLit = [
+        Math.min(255, lit.data[i] * energy + mixedTint[0] * 0.18 * intensity),
+        Math.min(255, lit.data[i + 1] * energy + mixedTint[1] * 0.18 * intensity),
+        Math.min(255, lit.data[i + 2] * energy + mixedTint[2] * 0.18 * intensity)
+      ];
+      const envColorized = [
+        baseLit[0] * (0.75 + (mixedTint[0] / 255) * 0.7),
+        baseLit[1] * (0.75 + (mixedTint[1] / 255) * 0.7),
+        baseLit[2] * (0.75 + (mixedTint[2] / 255) * 0.7)
+      ];
 
-      lit.data[i] = Math.min(255, lit.data[i] * energy + mixedTint[0] * 0.18 * intensity);
-      lit.data[i + 1] = Math.min(255, lit.data[i + 1] * energy + mixedTint[1] * 0.18 * intensity);
-      lit.data[i + 2] = Math.min(255, lit.data[i + 2] * energy + mixedTint[2] * 0.18 * intensity);
+      lit.data[i] = Math.min(255, baseLit[0] * (1 - hdriStrength * 0.65) + envColorized[0] * (hdriStrength * 0.65));
+      lit.data[i + 1] = Math.min(255, baseLit[1] * (1 - hdriStrength * 0.65) + envColorized[1] * (hdriStrength * 0.65));
+      lit.data[i + 2] = Math.min(255, baseLit[2] * (1 - hdriStrength * 0.65) + envColorized[2] * (hdriStrength * 0.65));
     }
   }
 

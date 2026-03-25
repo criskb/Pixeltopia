@@ -164,11 +164,14 @@ export default function Inspector() {
           <div className="layer-actions">
             <button onClick={() => dispatch({ type: 'rigging_toggle' })}>{rigging.enabled ? 'Hide Rig Overlay' : 'Show Rig Overlay'}</button>
             <button onClick={() => dispatch({ type: 'rigging_add_bone' })}><Plus size={14} />Bone</button>
+            <button onClick={() => dispatch({ type: 'rigging_select_next_bone' })}>Next Bone</button>
           </div>
+          <label className="control-row"><span>Weight Brush</span><input type="range" min="1" max="16" value={rigging.weightBrushRadius ?? 2} onChange={(e) => dispatch({ type: 'rigging_set_weight_radius', radius: Number(e.target.value) })} /></label>
+          <label className="control-row"><span>Auto Skin Radius</span><input type="range" min="2" max="20" value={rigging.autoSkinRadius ?? 7} onChange={(e) => dispatch({ type: 'rigging_set_auto_skin_radius', radius: Number(e.target.value) })} /></label>
           <button onClick={() => dispatch({ type: 'rigging_keyframe_set' })}>Set Bone Keyframe (Pixel Perfect)</button>
           <div className="layer-actions">
-            <button onClick={() => dispatch({ type: 'rigging_auto_skin_selected', radius: 7 })}>Auto Skin Selected</button>
-            <button onClick={() => dispatch({ type: 'rigging_auto_skin_all', radius: 8 })}>Auto Skin All</button>
+            <button onClick={() => dispatch({ type: 'rigging_auto_skin_selected', radius: rigging.autoSkinRadius ?? 7 })}>Auto Skin Selected</button>
+            <button onClick={() => dispatch({ type: 'rigging_auto_skin_all', radius: rigging.autoSkinRadius ?? 7 })}>Auto Skin All</button>
             <button onClick={() => dispatch({ type: 'rigging_clear_selected_weights' })}>Clear Weights</button>
           </div>
           <ul className="layer-list">
@@ -209,9 +212,10 @@ export default function Inspector() {
           <label className="control-row"><span>Ambient</span><input type="range" min="0" max="1" step="0.01" value={lighting.ambient} onChange={(e) => dispatch({ type: 'lighting_set', updates: { ambient: Number(e.target.value) } })} /></label>
           <label className="control-row"><span>Tint</span><input type="color" value={lighting.color} onChange={(e) => dispatch({ type: 'lighting_set', updates: { color: e.target.value } })} /></label>
           <label className="control-row"><span>HDRI Mix</span><input type="range" min="0" max="1" step="0.01" value={lighting.hdriStrength ?? 0.6} onChange={(e) => dispatch({ type: 'lighting_set', updates: { hdriStrength: Number(e.target.value) } })} /></label>
+          <label className="control-row"><span>HDRI Rotation</span><input type="range" min="-180" max="180" step="1" value={lighting.hdriRotation ?? 0} onChange={(e) => dispatch({ type: 'lighting_set', updates: { hdriRotation: Number(e.target.value) } })} /></label>
           <div className="layer-actions">
             <button onClick={() => hdriInputRef.current?.click()}>Load HDRI</button>
-            <button onClick={() => dispatch({ type: 'lighting_set', updates: { hdriName: '', hdriFormat: '', hdriDataUrl: '', hdriSamples: null } })} disabled={!lighting.hdriSamples}>Clear HDRI</button>
+            <button onClick={() => dispatch({ type: 'lighting_set', updates: { hdriName: '', hdriFormat: '', hdriDataUrl: '', hdriSamples: null, hdriRotation: 0 } })} disabled={!lighting.hdriSamples}>Clear HDRI</button>
           </div>
           <label className="control-row"><span>Emissive Strength</span><input type="range" min="0" max="1" step="0.01" value={material.emissiveStrength} onChange={(e) => dispatch({ type: 'material_set_strength', value: Number(e.target.value) })} /></label>
           <label className="control-row"><span>Roughness Strength</span><input type="range" min="0" max="1" step="0.01" value={material.roughnessStrength} onChange={(e) => dispatch({ type: 'material_set_roughness_strength', value: Number(e.target.value) })} /></label>

@@ -166,6 +166,8 @@ export const initialState = {
     bones: [createBone('Root')],
     selectedBoneId: null,
     draftBone: null,
+    weightBrushRadius: 2,
+    autoSkinRadius: 7,
     weights: {},
     keyframes: {}
   },
@@ -178,6 +180,7 @@ export const initialState = {
     color: '#ffd38a',
     position: { x: Math.round(initialProject.width * 0.75), y: Math.round(initialProject.height * 0.25) },
     hdriStrength: 0.6,
+    hdriRotation: 0,
     hdriSamples: null,
     hdriFormat: '',
     hdriName: ''
@@ -643,6 +646,10 @@ export function editorReducer(state, action) {
       return { ...state, rigging: { ...state.rigging, enabled: !state.rigging.enabled } };
     case 'rigging_set_tool':
       return { ...state, rigging: { ...state.rigging, tool: action.tool } };
+    case 'rigging_set_weight_radius':
+      return { ...state, rigging: { ...state.rigging, weightBrushRadius: Math.max(1, Math.min(16, action.radius ?? 2)) } };
+    case 'rigging_set_auto_skin_radius':
+      return { ...state, rigging: { ...state.rigging, autoSkinRadius: Math.max(1, Math.min(32, action.radius ?? 7)) } };
     case 'rigging_start_draw':
       return { ...state, rigging: { ...state.rigging, draftBone: { start: action.start, end: action.start } } };
     case 'rigging_update_draw':
@@ -711,6 +718,14 @@ export function editorReducer(state, action) {
     }
     case 'rigging_select_bone':
       return { ...state, rigging: { ...state.rigging, selectedBoneId: action.boneId } };
+    case 'rigging_select_next_bone': {
+      if (!state.rigging.bones.length) {
+        return state;
+      }
+      const currentIndex = state.rigging.bones.findIndex((bone) => bone.id === state.rigging.selectedBoneId);
+      const nextIndex = (currentIndex + 1 + state.rigging.bones.length) % state.rigging.bones.length;
+      return { ...state, rigging: { ...state.rigging, selectedBoneId: state.rigging.bones[nextIndex].id } };
+    }
     case 'rigging_auto_skin_selected': {
       const boneId = action.boneId ?? state.rigging.selectedBoneId;
       const bone = state.rigging.bones.find((item) => item.id === boneId);

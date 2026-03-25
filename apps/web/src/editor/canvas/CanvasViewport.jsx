@@ -312,7 +312,7 @@ export default function CanvasViewport() {
             } else if (rigging.tool === 'move') {
               dragBoneRef.current = hitBoneId ?? rigging.selectedBoneId;
             } else if (rigging.tool === 'weight') {
-              dispatch({ type: 'rigging_paint_weight', x, y, radius: 1, boneId: hitBoneId ?? rigging.selectedBoneId });
+              dispatch({ type: 'rigging_paint_weight', x, y, radius: rigging.weightBrushRadius ?? 2, boneId: hitBoneId ?? rigging.selectedBoneId });
             } else {
               dispatch({ type: 'rigging_ik_drag', target: { x, y } });
             }
@@ -362,7 +362,7 @@ export default function CanvasViewport() {
               });
               lastPointRef.current = { x: point.x, y: point.y };
             } else if (rigging.tool === 'weight') {
-              dispatch({ type: 'rigging_paint_weight', x: point.x, y: point.y, radius: 1 });
+              dispatch({ type: 'rigging_paint_weight', x: point.x, y: point.y, radius: rigging.weightBrushRadius ?? 2, boneId: rigging.selectedBoneId });
             } else {
               dispatch({ type: 'rigging_ik_drag', target: { x: point.x, y: point.y } });
             }

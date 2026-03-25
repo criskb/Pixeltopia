@@ -102,4 +102,59 @@ describe('render pipeline', () => {
     const pixel = (1 * lit.width + 1) * 4;
     expect(lit.data[pixel]).not.toBe(lit.data[pixel + 2]);
   });
+
+  it('changes lit output when HDRI mix is enabled', () => {
+    const project = createProject({ width: 3, height: 3, frameCount: 1, layerNames: ['Layer'], createPixelBuffer });
+    const layerId = project.layers[0].id;
+    const frame = project.frames[0];
+    setPixel(frame.cels[layerId].pixelBuffer, 1, 1, [100, 100, 100, 255]);
+
+    const withoutHdri = renderCanvasBuffer(project, {
+      enabled: true,
+      mode: 'global',
+      direction: 0,
+      intensity: 0.8,
+      ambient: 0.2,
+      color: '#ffffff',
+      hdriStrength: 0
+    });
+
+    const withHdri = renderCanvasBuffer(project, {
+      enabled: true,
+      mode: 'global',
+      direction: 0,
+      intensity: 0.8,
+      ambient: 0.2,
+      color: '#ffffff',
+      hdriStrength: 1,
+      hdriSamples: [[255, 80, 80], [80, 80, 255]]
+    });
+
+    const pixel = (1 * withHdri.width + 1) * 4;
+    expect(withHdri.data[pixel]).not.toBe(withoutHdri.data[pixel]);
+  });
+
+  it('applies HDRI rotation when sampling environment tint', () => {
+    const project = createProject({ width: 3, height: 3, frameCount: 1, layerNames: ['Layer'], createPixelBuffer });
+    const layerId = project.layers[0].id;
+    const frame = project.frames[0];
+    setPixel(frame.cels[layerId].pixelBuffer, 1, 1, [130, 130, 130, 255]);
+
+    const base = {
+      enabled: true,
+      mode: 'global',
+      direction: 30,
+      intensity: 0.85,
+      ambient: 0.15,
+      color: '#ffffff',
+      hdriStrength: 1,
+      hdriSamples: [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]]
+    };
+
+    const noRotation = renderCanvasBuffer(project, { ...base, hdriRotation: 0 });
+    const rotated = renderCanvasBuffer(project, { ...base, hdriRotation: 180 });
+
+    const pixel = (1 * noRotation.width + 1) * 4;
+    expect(rotated.data[pixel]).not.toBe(noRotation.data[pixel]);
+  });
 });
