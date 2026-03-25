@@ -1,3 +1,4 @@
+import { Eye, EyeOff, Lock, LockOpen, Palette, Paintbrush, Repeat2, Layers3 } from 'lucide-react';
 import { useEditorDispatch, useEditorState } from '../../state/EditorStateContext';
 
 const swatches = ['#1D1D1D', '#FFFFFF', '#7C5CFF', '#00C2FF', '#37D67A', '#FFB020', '#FF5D73', '#8B5CF6'];
@@ -9,7 +10,7 @@ export default function Inspector() {
   return (
     <aside className="inspector" aria-label="Inspector panels">
       <section className="panel">
-        <h2>Palette</h2>
+        <h2><Palette size={14} /> Palette</h2>
         <div className="swatch-grid">
           {swatches.map((color) => (
             <button
@@ -25,12 +26,12 @@ export default function Inspector() {
       </section>
 
       <section className="panel">
-        <h2>Layers</h2>
+        <h2><Layers3 size={14} /> Layers</h2>
         <ul className="layer-list">
           {layers.map((layer) => (
             <li key={layer.id} className={layer.id === selectedLayerId ? 'layer-row selected' : 'layer-row'}>
-              <button onClick={() => dispatch({ type: 'layer_toggle_visibility', layerId: layer.id })}>{layer.visible ? '👁' : '🚫'}</button>
-              <button onClick={() => dispatch({ type: 'layer_toggle_lock', layerId: layer.id })}>{layer.locked ? '🔒' : '🔓'}</button>
+              <button onClick={() => dispatch({ type: 'layer_toggle_visibility', layerId: layer.id })}>{layer.visible ? <Eye size={14} /> : <EyeOff size={14} />}</button>
+              <button onClick={() => dispatch({ type: 'layer_toggle_lock', layerId: layer.id })}>{layer.locked ? <Lock size={14} /> : <LockOpen size={14} />}</button>
               <button onClick={() => dispatch({ type: 'layer_select', layerId: layer.id })}>{layer.name}</button>
             </li>
           ))}
@@ -38,7 +39,7 @@ export default function Inspector() {
       </section>
 
       <section className="panel">
-        <h2>Brush</h2>
+        <h2><Paintbrush size={14} /> Brush</h2>
         <label className="control-row" htmlFor="brushSize">
           <span>Size</span>
           <input
@@ -62,7 +63,7 @@ export default function Inspector() {
       </section>
 
       <section className="panel">
-        <h2>Wrap Preview</h2>
+        <h2><Repeat2 size={14} /> Wrap Preview</h2>
         <button onClick={() => dispatch({ type: 'wrap_preview_toggle' })}>{wrapPreviewEnabled ? 'Disable 3x3' : 'Enable 3x3'}</button>
       </section>
     </aside>
