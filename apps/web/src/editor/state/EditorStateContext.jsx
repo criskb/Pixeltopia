@@ -12,6 +12,7 @@ import {
   selectLayer,
   setLayerBlendMode,
   setLayerOpacity,
+  setFrameDuration,
   setOnionSkin,
   setPlayback,
   toggleLayerLock,
@@ -47,6 +48,31 @@ function createBone(name = 'Bone') {
   };
 }
 
+function solveTwoBoneIK(bones, target) {
+  if (bones.length < 2) {
+    return bones;
+  }
+
+  const root = bones[0].start;
+  const l1 = Math.hypot(bones[0].end.x - bones[0].start.x, bones[0].end.y - bones[0].start.y) || 1;
+  const l2 = Math.hypot(bones[1].end.x - bones[1].start.x, bones[1].end.y - bones[1].start.y) || 1;
+  const dx = target.x - root.x;
+  const dy = target.y - root.y;
+  const dist = Math.min(Math.max(Math.hypot(dx, dy), 0.0001), l1 + l2 - 0.0001);
+
+  const a = Math.acos(Math.min(1, Math.max(-1, ((l1 * l1) + (dist * dist) - (l2 * l2)) / (2 * l1 * dist))));
+  const b = Math.atan2(dy, dx);
+  const mid = {
+    x: root.x + Math.cos(b - a) * l1,
+    y: root.y + Math.sin(b - a) * l1
+  };
+
+  const next = [...bones];
+  next[0] = { ...next[0], end: mid };
+  next[1] = { ...next[1], start: mid, end: { x: target.x, y: target.y } };
+  return next;
+}
+
 const initialProject = createProject({
   width: 64,
   height: 64,
@@ -60,6 +86,7 @@ export const initialState = {
   currentColor: '#7C5CFF',
   brushSize: 1,
   activeTool: 'pencil',
+  workspaceMode: 'draw',
   zoomLevel: 8,
   cursor: { x: 0, y: 0 },
   selectionMask: null,
@@ -251,6 +278,8 @@ function runMutation(state, action) {
       return { ...state, project: duplicateFrame(state.project) };
     case 'frame_delete':
       return { ...state, project: deleteFrame(state.project) };
+    case 'frame_set_duration':
+      return { ...state, project: setFrameDuration(state.project, action.frameId ?? state.project.selectedFrameId, action.duration) };
     case 'layer_create':
       return { ...state, project: addLayer(state.project, { createPixelBuffer, name: action.name }) };
     case 'layer_delete':
@@ -481,6 +510,8 @@ export function editorReducer(state, action) {
     }
     case 'set_active_tool':
       return { ...state, activeTool: action.tool };
+    case 'set_workspace_mode':
+      return { ...state, workspaceMode: action.mode };
     case 'set_color':
       return { ...state, currentColor: action.color };
     case 'set_zoom':
@@ -532,6 +563,8 @@ export function editorReducer(state, action) {
           bones: state.rigging.bones.map((bone) => bone.id === action.boneId ? { ...bone, ...action.updates } : bone)
         }
       };
+    case 'rigging_ik_drag':
+      return { ...state, rigging: { ...state.rigging, bones: solveTwoBoneIK(state.rigging.bones, action.target) } };
     case 'lighting_toggle':
       return { ...state, lighting: { ...state.lighting, enabled: !state.lighting.enabled } };
     case 'lighting_set':
@@ -561,6 +594,7 @@ export function editorReducer(state, action) {
     case 'frame_create':
     case 'frame_duplicate':
     case 'frame_delete':
+    case 'frame_set_duration':
     case 'layer_create':
     case 'layer_delete':
     case 'layer_set_blend_mode':
@@ -605,10 +639,12 @@ export function EditorProvider({ children }) {
       return undefined;
     }
 
-    const ms = 1000 / Math.max(1, state.project.playback.fps);
+    const frame = state.project.frames.find((item) => item.id === state.project.selectedFrameId);
+    const frameDuration = Math.max(1, frame?.duration ?? 1);
+    const ms = (1000 / Math.max(1, state.project.playback.fps)) * frameDuration;
     const timer = setInterval(() => dispatch({ type: 'playback_advance', step: 1 }), ms);
     return () => clearInterval(timer);
-  }, [state.project.playback.fps, state.project.playback.isPlaying]);
+  }, [state.project.frames, state.project.selectedFrameId, state.project.playback.fps, state.project.playback.isPlaying]);
 
   useEffect(() => {
     const timer = setInterval(() => {

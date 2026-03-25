@@ -123,7 +123,8 @@ export default function CanvasViewport() {
     width,
     height,
     rigging,
-    lighting
+    lighting,
+    workspaceMode
   } = useEditorState();
   const dispatch = useEditorDispatch();
   const [isDrawing, setIsDrawing] = useState(false);
@@ -147,6 +148,10 @@ export default function CanvasViewport() {
   }, [project, lighting, zoomLevel, wrapPreviewEnabled, wrapOffset]);
 
   function applyPointerAction(event) {
+    if (workspaceMode !== 'draw') {
+      return;
+    }
+
     const activeLayer = project.layers.find((layer) => layer.id === selectedLayerId);
     if (activeLayer?.locked) {
       return;
@@ -188,6 +193,13 @@ export default function CanvasViewport() {
         onPointerDown={(event) => {
           setIsDrawing(true);
           const { x, y } = getCanvasPixel(event, canvasRef.current, zoomLevel, wrapPreviewEnabled, width, height);
+          if (workspaceMode === 'rigging') {
+            if (!rigging.enabled) {
+              dispatch({ type: 'rigging_toggle' });
+            }
+            dispatch({ type: 'rigging_ik_drag', target: { x, y } });
+            return;
+          }
           if (activeTool === 'select-rect') {
             rectStartRef.current = { x, y };
           }
@@ -198,6 +210,11 @@ export default function CanvasViewport() {
         }}
         onPointerMove={(event) => {
           const point = getCanvasPixel(event, canvasRef.current, zoomLevel, wrapPreviewEnabled, width, height);
+          if (workspaceMode === 'rigging' && isDrawing) {
+            dispatch({ type: 'rigging_ik_drag', target: { x: point.x, y: point.y } });
+            return;
+          }
+
           if (isDrawing && activeTool === 'select-lasso') {
             lassoRef.current.push({ x: point.x, y: point.y });
           }

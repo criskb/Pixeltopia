@@ -97,6 +97,15 @@ export function deleteFrame(project, frameId = project.selectedFrameId) {
   return selectFrame({ ...project, frames }, nextFrameId);
 }
 
+
+export function setFrameDuration(project, frameId, duration) {
+  const normalized = Math.max(1, Math.min(12, Number(duration) || 1));
+  return {
+    ...project,
+    frames: project.frames.map((frame) => frame.id === frameId ? { ...frame, duration: normalized } : frame)
+  };
+}
+
 export function updateCelPixelBuffer(project, { frameId = project.selectedFrameId, layerId = project.selectedLayerId, pixelBuffer }) {
   return {
     ...project,

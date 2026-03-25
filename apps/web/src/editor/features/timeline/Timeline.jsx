@@ -1,9 +1,10 @@
-import { Clapperboard, Copy, Pause, Play, Plus, SkipBack, SkipForward, Trash2 } from 'lucide-react';
+import { Clapperboard, Copy, Pause, Play, Plus, SkipBack, SkipForward, Trash2, Gauge } from 'lucide-react';
 import { useEditorDispatch, useEditorState } from '../../state/EditorStateContext';
 
 export default function Timeline() {
   const { frames, selectedFrameId, playback } = useEditorState();
   const dispatch = useEditorDispatch();
+  const selectedFrame = frames.find((frame) => frame.id === selectedFrameId) ?? frames[0];
 
   return (
     <footer className="timeline" aria-label="Timeline">
@@ -23,6 +24,10 @@ export default function Timeline() {
           FPS
           <input type="number" min="1" max="60" value={playback.fps} onChange={(e) => dispatch({ type: 'playback_set_fps', fps: Number(e.target.value) })} />
         </label>
+        <label>
+          <Gauge size={13} /> Dur
+          <input type="number" min="1" max="12" value={selectedFrame?.duration ?? 1} onChange={(e) => dispatch({ type: 'frame_set_duration', frameId: selectedFrameId, duration: Number(e.target.value) })} />
+        </label>
         <select value={playback.loopMode} onChange={(e) => dispatch({ type: 'playback_set_loop_mode', loopMode: e.target.value })}>
           <option value="loop">Loop</option>
           <option value="once">Once</option>
@@ -32,7 +37,8 @@ export default function Timeline() {
       <div className="timeline-frames">
         {frames.map((frame, index) => (
           <button key={frame.id} className={frame.id === selectedFrameId ? 'frame active' : 'frame'} onClick={() => dispatch({ type: 'frame_select', frameId: frame.id })}>
-            F{index + 1}
+            <span>F{index + 1}</span>
+            <small>{frame.duration}t</small>
           </button>
         ))}
       </div>

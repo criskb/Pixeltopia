@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   Eye,
   EyeOff,
@@ -12,7 +12,8 @@ import {
   Trash2,
   Bone,
   SunMedium,
-  Sparkles
+  Sparkles,
+  Clapperboard
 } from 'lucide-react';
 import { useEditorDispatch, useEditorState } from '../../state/EditorStateContext';
 
@@ -20,34 +21,41 @@ const swatches = ['#1D1D1D', '#FFFFFF', '#7C5CFF', '#00C2FF', '#37D67A', '#FFB02
 const blendModes = ['normal', 'multiply', 'screen', 'add'];
 
 export default function Inspector() {
-  const { currentColor, brushSize, zoomLevel, layers, selectedLayerId, onionSkin, wrapPreviewEnabled, rigging, lighting } = useEditorState();
+  const {
+    currentColor,
+    brushSize,
+    zoomLevel,
+    layers,
+    selectedLayerId,
+    onionSkin,
+    wrapPreviewEnabled,
+    rigging,
+    lighting,
+    workspaceMode,
+    frames,
+    selectedFrameId
+  } = useEditorState();
   const dispatch = useEditorDispatch();
-  const [tab, setTab] = useState('paint');
   const selectedLayer = layers.find((layer) => layer.id === selectedLayerId) ?? layers[0];
   const selectedBone = useMemo(() => rigging.bones.find((bone) => bone.id === (rigging.selectedBoneId ?? rigging.bones[0]?.id)), [rigging]);
+  const selectedFrame = frames.find((frame) => frame.id === selectedFrameId) ?? frames[0];
 
   return (
     <aside className="inspector" aria-label="Inspector panels">
       <section className="panel tab-panel">
-        <button className={tab === 'paint' ? 'tab-btn active' : 'tab-btn'} onClick={() => setTab('paint')}><Paintbrush size={14} />Paint</button>
-        <button className={tab === 'rigging' ? 'tab-btn active' : 'tab-btn'} onClick={() => setTab('rigging')}><Bone size={14} />Rigging</button>
-        <button className={tab === 'lighting' ? 'tab-btn active' : 'tab-btn'} onClick={() => setTab('lighting')}><SunMedium size={14} />Shader</button>
+        <button className={workspaceMode === 'draw' ? 'tab-btn active' : 'tab-btn'} onClick={() => dispatch({ type: 'set_workspace_mode', mode: 'draw' })}><Paintbrush size={14} />Draw</button>
+        <button className={workspaceMode === 'animate' ? 'tab-btn active' : 'tab-btn'} onClick={() => dispatch({ type: 'set_workspace_mode', mode: 'animate' })}><Clapperboard size={14} />Animate</button>
+        <button className={workspaceMode === 'rigging' ? 'tab-btn active' : 'tab-btn'} onClick={() => dispatch({ type: 'set_workspace_mode', mode: 'rigging' })}><Bone size={14} />Rig</button>
+        <button className={workspaceMode === 'shader' ? 'tab-btn active' : 'tab-btn'} onClick={() => dispatch({ type: 'set_workspace_mode', mode: 'shader' })}><SunMedium size={14} />Shader</button>
       </section>
 
-      {tab === 'paint' && (
+      {workspaceMode === 'draw' && (
         <>
           <section className="panel">
             <h2><Palette size={14} /> Palette</h2>
             <div className="swatch-grid">
               {swatches.map((color) => (
-                <button
-                  key={color}
-                  className={currentColor === color ? 'swatch selected' : 'swatch'}
-                  title={color}
-                  aria-label={`Color ${color}`}
-                  style={{ background: color }}
-                  onClick={() => dispatch({ type: 'set_color', color })}
-                />
+                <button key={color} className={currentColor === color ? 'swatch selected' : 'swatch'} style={{ background: color }} onClick={() => dispatch({ type: 'set_color', color })} />
               ))}
             </div>
           </section>
@@ -70,61 +78,38 @@ export default function Inspector() {
 
             {selectedLayer && (
               <>
-                <label className="control-row">
-                  <span>Blend</span>
-                  <select
-                    value={selectedLayer.blendMode ?? 'normal'}
-                    onChange={(event) => dispatch({ type: 'layer_set_blend_mode', layerId: selectedLayer.id, blendMode: event.target.value })}
-                  >
-                    {blendModes.map((mode) => (
-                      <option key={mode} value={mode}>{mode}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="control-row" htmlFor="layerOpacity">
-                  <span>Opacity</span>
-                  <input
-                    id="layerOpacity"
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={Math.round((selectedLayer.opacity ?? 1) * 100)}
-                    onChange={(event) => dispatch({ type: 'layer_set_opacity', layerId: selectedLayer.id, opacity: Number(event.target.value) / 100 })}
-                  />
-                </label>
+                <label className="control-row"><span>Blend</span><select value={selectedLayer.blendMode ?? 'normal'} onChange={(e) => dispatch({ type: 'layer_set_blend_mode', layerId: selectedLayer.id, blendMode: e.target.value })}>{blendModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}</select></label>
+                <label className="control-row" htmlFor="layerOpacity"><span>Opacity</span><input id="layerOpacity" type="range" min="0" max="100" value={Math.round((selectedLayer.opacity ?? 1) * 100)} onChange={(e) => dispatch({ type: 'layer_set_opacity', layerId: selectedLayer.id, opacity: Number(e.target.value) / 100 })} /></label>
               </>
             )}
           </section>
 
           <section className="panel">
-            <h2><Repeat2 size={14} /> Preview Helpers</h2>
-            <label className="control-row" htmlFor="brushSize">
-              <span>Brush</span>
-              <input
-                id="brushSize"
-                type="range"
-                min="1"
-                max="8"
-                value={brushSize}
-                onChange={(event) => dispatch({ type: 'set_brush_size', size: Number(event.target.value) })}
-              />
-            </label>
-            <div className="control-row">
-              <span>Zoom</span>
-              <strong>{zoomLevel * 100}%</strong>
-            </div>
-            <button onClick={() => dispatch({ type: 'onion_toggle' })}>{onionSkin.enabled ? 'Disable Onion Skin' : 'Enable Onion Skin'}</button>
-            <button onClick={() => dispatch({ type: 'wrap_preview_toggle' })}>{wrapPreviewEnabled ? 'Disable 3x3 Wrap' : 'Enable 3x3 Wrap'}</button>
+            <h2><Repeat2 size={14} /> Draw Tools</h2>
+            <label className="control-row" htmlFor="brushSize"><span>Brush</span><input id="brushSize" type="range" min="1" max="8" value={brushSize} onChange={(e) => dispatch({ type: 'set_brush_size', size: Number(e.target.value) })} /></label>
+            <div className="control-row"><span>Zoom</span><strong>{zoomLevel * 100}%</strong></div>
+            <p className="subhead">Painting tools enabled in this mode.</p>
           </section>
         </>
       )}
 
-      {tab === 'rigging' && (
+      {workspaceMode === 'animate' && (
         <section className="panel">
-          <h2><Bone size={14} /> Bone Rig</h2>
-          <p className="subhead">Create simple bones and preview them over the sprite.</p>
+          <h2><Clapperboard size={14} /> Animation Tools</h2>
+          <div className="control-row"><span>Frame</span><strong>{selectedFrame ? frames.indexOf(selectedFrame) + 1 : 1}</strong></div>
+          <label className="control-row"><span>Frame Duration</span><input type="number" min="1" max="12" value={selectedFrame?.duration ?? 1} onChange={(e) => dispatch({ type: 'frame_set_duration', frameId: selectedFrameId, duration: Number(e.target.value) })} /></label>
+          <button onClick={() => dispatch({ type: 'onion_toggle' })}>{onionSkin.enabled ? 'Disable Onion Skin' : 'Enable Onion Skin'}</button>
+          <button onClick={() => dispatch({ type: 'wrap_preview_toggle' })}>{wrapPreviewEnabled ? 'Disable Wrap Preview' : 'Enable Wrap Preview'}</button>
+          <p className="subhead">Animation helpers are isolated here; draw edits are disabled while animating.</p>
+        </section>
+      )}
+
+      {workspaceMode === 'rigging' && (
+        <section className="panel">
+          <h2><Bone size={14} /> IK Rigging</h2>
+          <p className="subhead">Drag in canvas to solve a two-bone IK chain.</p>
           <div className="layer-actions">
-            <button onClick={() => dispatch({ type: 'rigging_toggle' })}>{rigging.enabled ? 'Disable Rig Overlay' : 'Enable Rig Overlay'}</button>
+            <button onClick={() => dispatch({ type: 'rigging_toggle' })}>{rigging.enabled ? 'Hide Rig Overlay' : 'Show Rig Overlay'}</button>
             <button onClick={() => dispatch({ type: 'rigging_add_bone' })}><Plus size={14} />Bone</button>
           </div>
           <ul className="layer-list">
@@ -135,27 +120,22 @@ export default function Inspector() {
               </li>
             ))}
           </ul>
-
-          {selectedBone && (
-            <>
-              <label className="control-row"><span>Start X</span><input type="number" value={selectedBone.start.x} onChange={(event) => dispatch({ type: 'rigging_update_bone', boneId: selectedBone.id, updates: { start: { ...selectedBone.start, x: Number(event.target.value) || 0 } } })} /></label>
-              <label className="control-row"><span>Start Y</span><input type="number" value={selectedBone.start.y} onChange={(event) => dispatch({ type: 'rigging_update_bone', boneId: selectedBone.id, updates: { start: { ...selectedBone.start, y: Number(event.target.value) || 0 } } })} /></label>
-              <label className="control-row"><span>End X</span><input type="number" value={selectedBone.end.x} onChange={(event) => dispatch({ type: 'rigging_update_bone', boneId: selectedBone.id, updates: { end: { ...selectedBone.end, x: Number(event.target.value) || 0 } } })} /></label>
-              <label className="control-row"><span>End Y</span><input type="number" value={selectedBone.end.y} onChange={(event) => dispatch({ type: 'rigging_update_bone', boneId: selectedBone.id, updates: { end: { ...selectedBone.end, y: Number(event.target.value) || 0 } } })} /></label>
-            </>
-          )}
         </section>
       )}
 
-      {tab === 'lighting' && (
+      {workspaceMode === 'shader' && (
         <section className="panel">
           <h2><Sparkles size={14} /> Dynamic Light Shader</h2>
-          <p className="subhead">Realtime lighting pass over the current composite for preview.</p>
           <button onClick={() => dispatch({ type: 'lighting_toggle' })}>{lighting.enabled ? 'Disable Lighting' : 'Enable Lighting'}</button>
-          <label className="control-row"><span>Direction</span><input type="range" min="0" max="360" value={lighting.direction} onChange={(event) => dispatch({ type: 'lighting_set', updates: { direction: Number(event.target.value) } })} /></label>
-          <label className="control-row"><span>Intensity</span><input type="range" min="0" max="1" step="0.01" value={lighting.intensity} onChange={(event) => dispatch({ type: 'lighting_set', updates: { intensity: Number(event.target.value) } })} /></label>
-          <label className="control-row"><span>Ambient</span><input type="range" min="0" max="1" step="0.01" value={lighting.ambient} onChange={(event) => dispatch({ type: 'lighting_set', updates: { ambient: Number(event.target.value) } })} /></label>
-          <label className="control-row"><span>Light Tint</span><input type="color" value={lighting.color} onChange={(event) => dispatch({ type: 'lighting_set', updates: { color: event.target.value } })} /></label>
+          <label className="control-row"><span>Direction</span><input type="range" min="0" max="360" value={lighting.direction} onChange={(e) => dispatch({ type: 'lighting_set', updates: { direction: Number(e.target.value) } })} /></label>
+          <label className="control-row"><span>Intensity</span><input type="range" min="0" max="1" step="0.01" value={lighting.intensity} onChange={(e) => dispatch({ type: 'lighting_set', updates: { intensity: Number(e.target.value) } })} /></label>
+          <label className="control-row"><span>Ambient</span><input type="range" min="0" max="1" step="0.01" value={lighting.ambient} onChange={(e) => dispatch({ type: 'lighting_set', updates: { ambient: Number(e.target.value) } })} /></label>
+          <label className="control-row"><span>Light Tint</span><input type="color" value={lighting.color} onChange={(e) => dispatch({ type: 'lighting_set', updates: { color: e.target.value } })} /></label>
+          <div className="preset-row">
+            <button onClick={() => dispatch({ type: 'lighting_set', updates: { direction: 30, intensity: 0.75, ambient: 0.25, color: '#ffd38a' } })}>Sunrise</button>
+            <button onClick={() => dispatch({ type: 'lighting_set', updates: { direction: 220, intensity: 0.65, ambient: 0.4, color: '#8ac6ff' } })}>Moonlight</button>
+            <button onClick={() => dispatch({ type: 'lighting_set', updates: { direction: 90, intensity: 0.9, ambient: 0.2, color: '#fff0b8' } })}>Top Light</button>
+          </div>
         </section>
       )}
     </aside>
