@@ -121,6 +121,7 @@ function RigOverlay({ rigging, zoomLevel, width, height, wrapPreviewEnabled, met
 
 function ShaderViewportControls({ lighting, material, zoomLevel, overlayMetrics, dispatch }) {
   const fileInputRef = useRef(null);
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
   const lightHandle = useMemo(() => {
     const safePos = lighting.position ?? { x: 0, y: 0 };
@@ -193,15 +194,27 @@ function ShaderViewportControls({ lighting, material, zoomLevel, overlayMetrics,
         {lighting.mode === 'global' && (
           <label className="control-row"><span>Direction</span><input type="range" min="0" max="360" value={lighting.direction} onChange={(e) => dispatch({ type: 'lighting_set', updates: { direction: Number(e.target.value) } })} /></label>
         )}
+        {lighting.mode === 'point' && (
+          <>
+            <label className="control-row"><span>Light X</span><input type="number" min="0" max={Math.max(0, Math.round(overlayMetrics.width / Math.max(1, zoomLevel)))} value={Math.round(lighting.position?.x ?? 0)} onChange={(e) => dispatch({ type: 'lighting_set', updates: { position: { ...(lighting.position ?? { x: 0, y: 0 }), x: clamp(Number(e.target.value), 0, Math.max(0, Math.round(overlayMetrics.width / Math.max(1, zoomLevel)))) } } })} /></label>
+            <label className="control-row"><span>Light Y</span><input type="number" min="0" max={Math.max(0, Math.round(overlayMetrics.height / Math.max(1, zoomLevel)))} value={Math.round(lighting.position?.y ?? 0)} onChange={(e) => dispatch({ type: 'lighting_set', updates: { position: { ...(lighting.position ?? { x: 0, y: 0 }), y: clamp(Number(e.target.value), 0, Math.max(0, Math.round(overlayMetrics.height / Math.max(1, zoomLevel)))) } } })} /></label>
+          </>
+        )}
         <label className="control-row"><span>Intensity</span><input type="range" min="0" max="1" step="0.01" value={lighting.intensity} onChange={(e) => dispatch({ type: 'lighting_set', updates: { intensity: Number(e.target.value) } })} /></label>
         <label className="control-row"><span>Ambient</span><input type="range" min="0" max="1" step="0.01" value={lighting.ambient} onChange={(e) => dispatch({ type: 'lighting_set', updates: { ambient: Number(e.target.value) } })} /></label>
         <label className="control-row"><span>Tint</span><input type="color" value={lighting.color} onChange={(e) => dispatch({ type: 'lighting_set', updates: { color: e.target.value } })} /></label>
         <label className="control-row"><span>HDRI Mix</span><input type="range" min="0" max="1" step="0.01" value={lighting.hdriStrength ?? 0.6} onChange={(e) => dispatch({ type: 'lighting_set', updates: { hdriStrength: Number(e.target.value) } })} /></label>
+        <div className="preset-row">
+          <button onClick={() => dispatch({ type: 'lighting_set', updates: { mode: 'point', enabled: true, intensity: 0.9, ambient: 0.22, color: '#ffe0a8' } })}>Key</button>
+          <button onClick={() => dispatch({ type: 'lighting_set', updates: { mode: 'global', enabled: true, direction: 230, intensity: 0.6, ambient: 0.38, color: '#8cc6ff' } })}>Fill</button>
+          <button onClick={() => dispatch({ type: 'lighting_set', updates: { mode: 'global', enabled: true, direction: 140, intensity: 0.82, ambient: 0.2, color: '#fff2c4' } })}>Rim</button>
+        </div>
         <div className="layer-actions">
           <button onClick={() => fileInputRef.current?.click()}>Load HDRI</button>
           <button onClick={() => dispatch({ type: 'lighting_set', updates: { hdriName: '', hdriDataUrl: '', hdriSamples: null } })} disabled={!lighting.hdriSamples}>Clear HDRI</button>
+          <button onClick={() => dispatch({ type: 'lighting_set', updates: { mode: 'point', direction: 40, intensity: 0.7, ambient: 0.35, color: '#ffd38a', hdriStrength: 0.6 } })}>Reset</button>
         </div>
-        <p className="subhead">Active material tool: {material.tool}. {lighting.hdriName ? `HDRI: ${lighting.hdriName}` : 'No HDRI loaded.'}</p>
+        <p className="subhead">Drag in-canvas while Light tool is active. Active material tool: {material.tool}. {lighting.hdriName ? `HDRI: ${lighting.hdriName}` : 'No HDRI loaded.'}</p>
         <input
           ref={fileInputRef}
           type="file"

@@ -430,8 +430,10 @@ button:focus-visible {
 .shader-overlay-panel {
   position: absolute;
   top: 10px;
-  left: 10px;
-  width: min(320px, calc(100% - 20px));
+  right: 10px;
+  width: min(300px, calc(100% - 20px));
+  max-height: calc(100% - 20px);
+  overflow: auto;
   padding: 10px;
   border-radius: 10px;
   border: 1px solid var(--outline);
