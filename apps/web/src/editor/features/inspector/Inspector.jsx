@@ -220,12 +220,24 @@ export default function Inspector() {
           <label className="control-row"><span>Emissive Strength</span><input type="range" min="0" max="1" step="0.01" value={material.emissiveStrength} onChange={(e) => dispatch({ type: 'material_set_strength', value: Number(e.target.value) })} /></label>
           <label className="control-row"><span>Roughness Strength</span><input type="range" min="0" max="1" step="0.01" value={material.roughnessStrength} onChange={(e) => dispatch({ type: 'material_set_roughness_strength', value: Number(e.target.value) })} /></label>
           <label className="control-row"><span>Metalness Strength</span><input type="range" min="0" max="1" step="0.01" value={material.metalnessStrength} onChange={(e) => dispatch({ type: 'material_set_metalness_strength', value: Number(e.target.value) })} /></label>
+          <label className="control-row"><span>Height Strength</span><input type="range" min="0" max="1" step="0.01" value={material.heightStrength ?? 0.35} onChange={(e) => dispatch({ type: 'material_set_height_strength', value: Number(e.target.value) })} /></label>
+          <label className="control-row"><span>Normal Strength</span><input type="range" min="0" max="2" step="0.01" value={material.normalStrength ?? 0.8} onChange={(e) => dispatch({ type: 'material_set_normal_strength', value: Number(e.target.value) })} /></label>
+          <label className="control-row"><span>Material Brush Radius</span><input type="range" min="1" max="12" step="1" value={material.brushRadius ?? 1} onChange={(e) => dispatch({ type: 'material_set_brush_radius', radius: Number(e.target.value) })} /></label>
+          <label className="control-row"><span>Emissive Paint</span><input type="range" min="0" max="1" step="0.01" value={material.emissivePaintValue ?? 1} onChange={(e) => dispatch({ type: 'material_set_paint_value', channel: 'emissivePaintValue', value: Number(e.target.value) })} /></label>
+          <label className="control-row"><span>Roughness Paint</span><input type="range" min="0" max="1" step="0.01" value={material.roughnessPaintValue ?? 0.7} onChange={(e) => dispatch({ type: 'material_set_paint_value', channel: 'roughnessPaintValue', value: Number(e.target.value) })} /></label>
+          <label className="control-row"><span>Metalness Paint</span><input type="range" min="0" max="1" step="0.01" value={material.metalnessPaintValue ?? 0.65} onChange={(e) => dispatch({ type: 'material_set_paint_value', channel: 'metalnessPaintValue', value: Number(e.target.value) })} /></label>
+          <label className="control-row"><span>Height Paint</span><input type="range" min="0" max="1" step="0.01" value={material.heightPaintValue ?? 0.5} onChange={(e) => dispatch({ type: 'material_set_paint_value', channel: 'heightPaintValue', value: Number(e.target.value) })} /></label>
+          <div className="layer-actions">
+            <button onClick={() => dispatch({ type: 'material_generate_height_from_sprite', gain: 1 })}>Auto Height from Sprite</button>
+            <button onClick={() => dispatch({ type: 'material_generate_height_from_sprite', gain: 1.35 })}>Boosted Height</button>
+          </div>
           <div className="layer-actions">
             <button onClick={() => dispatch({ type: 'material_clear_emissive' })}>Clear Emissive</button>
             <button onClick={() => dispatch({ type: 'material_clear_roughness' })}>Clear Roughness</button>
             <button onClick={() => dispatch({ type: 'material_clear_metalness' })}>Clear Metalness</button>
+            <button onClick={() => dispatch({ type: 'material_clear_height' })}>Clear Height</button>
           </div>
-          <p className="subhead">Lighting controls are now in this right inspector panel. Drag light in-canvas with the Light tool for direct placement. Active: {material.tool}. {lighting.hdriName ? `HDRI: ${lighting.hdriName}` : 'No HDRI loaded.'}</p>
+          <p className="subhead">Lighting controls are now in this right inspector panel. Drag light in-canvas with the Light tool for direct placement. Active: {material.tool}. Normal/depth response is generated automatically from height + sprite data. {lighting.hdriName ? `HDRI: ${lighting.hdriName}` : 'No HDRI loaded.'}</p>
           <input
             ref={hdriInputRef}
             type="file"

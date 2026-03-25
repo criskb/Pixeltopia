@@ -77,6 +77,7 @@ button:focus-visible {
   border: 1px solid var(--outline);
   border-radius: 14px;
   box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(14px);
 }
 
 .topbar h1 {
@@ -99,6 +100,12 @@ button:focus-visible {
 
 .topbar-actions button {
   padding: 8px 12px;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.topbar-actions button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.22);
 }
 
 .topbar-actions .primary {
@@ -341,6 +348,11 @@ button:focus-visible {
   flex-direction: column;
   gap: 10px;
   padding: 10px 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0)),
+    radial-gradient(circle at 20% -30%, rgba(124, 92, 255, 0.24), transparent 60%),
+    radial-gradient(circle at 80% -40%, rgba(0, 194, 255, 0.2), transparent 55%),
+    var(--bg-panel);
 }
 
 .timeline-header {
@@ -368,15 +380,60 @@ button:focus-visible {
   display: flex;
   gap: 8px;
   overflow: auto;
+  padding-bottom: 4px;
+}
+
+.timeline-scrubber {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.timeline-scrubber label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.timeline-scrubber input[type="range"] {
+  width: 100%;
+}
+
+.timeline-ruler {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(10px, 1fr);
+  gap: 6px;
+}
+
+.timeline-ruler .tick {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.timeline-ruler .tick.active {
+  background: linear-gradient(120deg, var(--accent-primary), var(--accent-secondary));
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
 
 .frame {
   min-width: 62px;
-  padding: 8px 0;
+  padding: 8px 6px;
   justify-content: center;
   gap: 2px;
   flex-direction: column;
   background: var(--timeline-idle);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: transform 100ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.frame:hover {
+  transform: translateY(-1px);
+  border-color: rgba(94, 193, 255, 0.7);
 }
 
 .frame small {

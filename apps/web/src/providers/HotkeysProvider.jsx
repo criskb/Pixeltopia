@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   createWorkspacePolishPlan,
   persistAutosaveSnapshot,
@@ -8,7 +8,12 @@ import {
 
 export default function HotkeysProvider({ children }) {
   const state = useEditorState();
+  const stateRef = useRef(state);
   const dispatch = useEditorDispatch();
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -48,11 +53,11 @@ export default function HotkeysProvider({ children }) {
       if (withMeta && key === '-') dispatch({ type: 'transform_pixels', transform: 'scale', scaleX: 0.5, scaleY: 0.5 });
       if (withMeta && key === 's') {
         event.preventDefault();
-        persistAutosaveSnapshot(state);
+        persistAutosaveSnapshot(stateRef.current);
       }
       if (withMeta && event.shiftKey && key === 'p') {
         event.preventDefault();
-        const plan = createWorkspacePolishPlan(state);
+        const plan = createWorkspacePolishPlan(stateRef.current);
         for (const action of plan.actions) {
           dispatch(action);
         }

@@ -109,4 +109,18 @@ describe('editor reliability layer', () => {
       { type: 'playback_set_fps', fps: 12 }
     ]);
   });
+
+  it('supports shader material value painting and auto height generation', () => {
+    let state = freshState();
+    const drawBuffer = createPixelBuffer(state.project.width, state.project.height);
+    setPixel(drawBuffer, 3, 3, [200, 180, 160, 255]);
+    state = editorReducer(state, { type: 'update_pixels', pixelBuffer: drawBuffer });
+    state = editorReducer(state, { type: 'material_set_tool', tool: 'metalness' });
+    state = editorReducer(state, { type: 'material_paint', x: 3, y: 3, radius: 0, value: 0.4 });
+    const pixelIndex = (3 * state.project.width) + 3;
+    expect(state.material.metalnessMask[pixelIndex]).toBe(Math.round(255 * 0.4));
+
+    state = editorReducer(state, { type: 'material_generate_height_from_sprite', gain: 1 });
+    expect(state.material.heightMask.some((value) => value > 0)).toBe(true);
+  });
 });
