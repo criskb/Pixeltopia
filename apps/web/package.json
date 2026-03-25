@@ -16,7 +16,8 @@
     "react-dom": "^18.3.1",
     "vite": "^5.4.11",
     "@pixelforge/domain": "file:../../packages/domain",
-    "@pixelforge/io": "file:../../packages/io"
+    "@pixelforge/io": "file:../../packages/io",
+    "lucide-react": "^0.542.0"
   },
   "devDependencies": {
     "vitest": "^3.2.4",
