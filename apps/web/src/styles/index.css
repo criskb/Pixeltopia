@@ -395,10 +395,17 @@ button:focus-visible {
   padding: 4px 6px;
 }
 
-.tab-btn.active {
-  background: rgba(124, 92, 255, 0.24);
-  border-color: var(--accent-primary);
+.rig-bone.selected .rig-segment,
+.rig-bone.selected .rig-joint {
+  background: #ff7ac3;
 }
+
+.preset-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
 
 .rig-overlay {
   position: absolute;
@@ -433,12 +440,6 @@ button:focus-visible {
   background: #ff7ac3;
 }
 
-.preset-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-
 
 .rig-overlay {
   position: absolute;
@@ -446,6 +447,24 @@ button:focus-visible {
   pointer-events: none;
 }
 
+
+.rig-mask {
+  position: absolute;
+  inset: 0;
+}
+
+.rig-mask-pixel {
+  position: absolute;
+  background: rgba(255, 122, 195, 0.35);
+  pointer-events: none;
+}
+
+.rig-draft {
+  position: absolute;
+  height: 2px;
+  background: #58fffc;
+  transform-origin: 0 50%;
+}
 .rig-bone {
   position: absolute;
 }
@@ -483,6 +502,16 @@ button:focus-visible {
   justify-content: center;
   font-size: 11px;
   padding: 6px;
+}
+
+.three-preview {
+  margin-top: 8px;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: 10px;
+  border: 1px solid var(--outline);
+  overflow: hidden;
+  background: #10141f;
 }
 .modal-overlay {
   position: fixed;

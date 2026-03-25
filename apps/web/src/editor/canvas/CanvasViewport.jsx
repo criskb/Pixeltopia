@@ -84,6 +84,20 @@ function RigOverlay({ rigging, zoomLevel, width, height, wrapPreviewEnabled }) {
 
   return (
     <div className="rig-overlay" aria-hidden="true">
+
+      {rigging.selectedBoneId && rigging.weights?.[rigging.selectedBoneId] && (
+        <div className="rig-mask">
+          {Array.from(rigging.weights[rigging.selectedBoneId]).map((value, index) => {
+            if (!value) {
+              return null;
+            }
+            const px = index % width;
+            const py = Math.floor(index / width);
+            return <span key={index} className="rig-mask-pixel" style={{ left: (px + offset.x) * zoomLevel, top: (py + offset.y) * zoomLevel, width: zoomLevel, height: zoomLevel }} />;
+          })}
+        </div>
+      )}
+
       {rigging.bones.map((bone) => {
         const x1 = (bone.start.x + offset.x) * zoomLevel;
         const y1 = (bone.start.y + offset.y) * zoomLevel;
@@ -109,6 +123,8 @@ export default function CanvasViewport() {
   const canvasRef = useRef(null);
   const lassoRef = useRef([]);
   const rectStartRef = useRef(null);
+  const dragBoneRef = useRef(null);
+  const lastPointRef = useRef(null);
   const {
     project,
     pixelBuffer,
@@ -134,7 +150,7 @@ export default function CanvasViewport() {
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    const renderBuffer = renderCanvasBuffer(project, lighting);
+    const renderBuffer = renderCanvasBuffer(project, lighting, rigging);
     const displayBuffer = wrapPreviewEnabled ? renderWrapPreviewBuffer(renderBuffer, wrapOffset) : renderBuffer;
 
     canvas.width = displayBuffer.width;
@@ -197,7 +213,16 @@ export default function CanvasViewport() {
             if (!rigging.enabled) {
               dispatch({ type: 'rigging_toggle' });
             }
-            dispatch({ type: 'rigging_ik_drag', target: { x, y } });
+            lastPointRef.current = { x, y };
+            if (rigging.tool === 'draw') {
+              dispatch({ type: 'rigging_start_draw', start: { x, y } });
+            } else if (rigging.tool === 'move') {
+              dragBoneRef.current = rigging.selectedBoneId;
+            } else if (rigging.tool === 'weight') {
+              dispatch({ type: 'rigging_paint_weight', x, y, radius: 1 });
+            } else {
+              dispatch({ type: 'rigging_ik_drag', target: { x, y } });
+            }
             return;
           }
           if (activeTool === 'select-rect') {
@@ -211,7 +236,21 @@ export default function CanvasViewport() {
         onPointerMove={(event) => {
           const point = getCanvasPixel(event, canvasRef.current, zoomLevel, wrapPreviewEnabled, width, height);
           if (workspaceMode === 'rigging' && isDrawing) {
-            dispatch({ type: 'rigging_ik_drag', target: { x: point.x, y: point.y } });
+            if (rigging.tool === 'draw') {
+              dispatch({ type: 'rigging_update_draw', end: { x: point.x, y: point.y } });
+            } else if (rigging.tool === 'move' && dragBoneRef.current && lastPointRef.current) {
+              dispatch({
+                type: 'rigging_move_bone',
+                boneId: dragBoneRef.current,
+                dx: point.x - lastPointRef.current.x,
+                dy: point.y - lastPointRef.current.y
+              });
+              lastPointRef.current = { x: point.x, y: point.y };
+            } else if (rigging.tool === 'weight') {
+              dispatch({ type: 'rigging_paint_weight', x: point.x, y: point.y, radius: 1 });
+            } else {
+              dispatch({ type: 'rigging_ik_drag', target: { x: point.x, y: point.y } });
+            }
             return;
           }
 
@@ -226,6 +265,16 @@ export default function CanvasViewport() {
           }
         }}
         onPointerUp={(event) => {
+          if (workspaceMode === 'rigging') {
+            if (rigging.tool === 'draw') {
+              dispatch({ type: 'rigging_commit_draw', connect: true });
+            }
+            dragBoneRef.current = null;
+            lastPointRef.current = null;
+            setIsDrawing(false);
+            return;
+          }
+
           if (activeTool === 'select-rect' && rectStartRef.current) {
             const end = getCanvasPixel(event, canvasRef.current, zoomLevel, wrapPreviewEnabled, width, height);
             dispatch({ type: 'selection_rect', start: rectStartRef.current, end });
@@ -241,9 +290,23 @@ export default function CanvasViewport() {
           setIsDrawing(false);
           rectStartRef.current = null;
           lassoRef.current = [];
+          dragBoneRef.current = null;
+          lastPointRef.current = null;
         }}
       />
       <RigOverlay rigging={rigging} zoomLevel={zoomLevel} width={width} height={height} wrapPreviewEnabled={wrapPreviewEnabled} />
+      {rigging.draftBone && (
+        <div
+          className="rig-draft"
+          style={{
+            left: rigging.draftBone.start.x * zoomLevel,
+            top: rigging.draftBone.start.y * zoomLevel,
+            width: Math.hypot((rigging.draftBone.end.x - rigging.draftBone.start.x) * zoomLevel, (rigging.draftBone.end.y - rigging.draftBone.start.y) * zoomLevel),
+            transform: `rotate(${Math.atan2(rigging.draftBone.end.y - rigging.draftBone.start.y, rigging.draftBone.end.x - rigging.draftBone.start.x) * (180 / Math.PI)}deg)`
+          }}
+        />
+      )}
+
       <SelectionOverlay bounds={selectionBounds} zoomLevel={zoomLevel} wrapPreviewEnabled={wrapPreviewEnabled} width={width} height={height} />
     </div>
   );

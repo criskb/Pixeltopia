@@ -1,4 +1,4 @@
-import { Brush, Eraser, PaintBucket, Pipette, RectangleHorizontal, Lasso, Bone, Move3d, SunMedium, Clapperboard } from 'lucide-react';
+import { Brush, Eraser, PaintBucket, Pipette, RectangleHorizontal, Lasso, Bone, Move3d, SunMedium, Clapperboard, Link2, PenSquare } from 'lucide-react';
 import { useEditorDispatch, useEditorState } from '../../state/EditorStateContext';
 
 const drawTools = [
@@ -12,12 +12,17 @@ const drawTools = [
 
 const modeTools = {
   animate: [{ key: 'timeline', label: 'Timeline', shortcut: 'T', icon: Clapperboard }],
-  rigging: [{ key: 'ik-chain', label: 'IK Chain', shortcut: 'R', icon: Bone }, { key: 'pose', label: 'Pose', shortcut: 'P', icon: Move3d }],
+  rigging: [
+    { key: 'draw', label: 'Draw Bone', shortcut: 'D', icon: Bone },
+    { key: 'move', label: 'Move Bone', shortcut: 'M', icon: Move3d },
+    { key: 'weight', label: 'Skin Paint', shortcut: 'W', icon: PenSquare },
+    { key: 'ik', label: 'IK Drag', shortcut: 'K', icon: Link2 }
+  ],
   shader: [{ key: 'light', label: 'Light', shortcut: 'L', icon: SunMedium }]
 };
 
 export default function ToolRail() {
-  const { activeTool, workspaceMode } = useEditorState();
+  const { activeTool, workspaceMode, rigging } = useEditorState();
   const dispatch = useEditorDispatch();
   const tools = workspaceMode === 'draw' ? drawTools : (modeTools[workspaceMode] ?? []);
 
@@ -26,7 +31,7 @@ export default function ToolRail() {
       <div className="rail-title">{workspaceMode === 'draw' ? 'Draw Tools' : `${workspaceMode} tools`}</div>
       {tools.map((tool) => {
         const Icon = tool.icon;
-        const isActive = workspaceMode === 'draw' ? tool.key === activeTool : false;
+        const isActive = workspaceMode === 'draw' ? tool.key === activeTool : workspaceMode === 'rigging' ? rigging.tool === tool.key : false;
         return (
           <button
             key={tool.key}
@@ -35,6 +40,9 @@ export default function ToolRail() {
             onClick={() => {
               if (workspaceMode === 'draw') {
                 dispatch({ type: 'set_active_tool', tool: tool.key });
+              }
+              if (workspaceMode === 'rigging') {
+                dispatch({ type: 'rigging_set_tool', tool: tool.key });
               }
             }}
           >

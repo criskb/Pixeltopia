@@ -39,6 +39,73 @@ function blendPixel(dst, src, opacity = 1, mode = 'normal') {
   ];
 }
 
+
+function applyRiggingToFrame(frame, project, rigging, frameId) {
+  if (!rigging?.enabled || !rigging?.weights) {
+    return frame;
+  }
+
+  const keyframe = rigging.keyframes?.[frameId];
+  if (!keyframe) {
+    return frame;
+  }
+
+  const deformed = {
+    ...frame,
+    cels: Object.fromEntries(Object.entries(frame.cels).map(([layerId, cel]) => {
+      const nextData = new Uint8ClampedArray(cel.pixelBuffer.data);
+      const baseData = new Uint8ClampedArray(cel.pixelBuffer.data);
+
+      for (const bone of rigging.bones) {
+        const mask = rigging.weights[bone.id];
+        const offset = keyframe[bone.id];
+        if (!mask || !offset) {
+          continue;
+        }
+
+        const dx = Math.round(offset.dx ?? 0);
+        const dy = Math.round(offset.dy ?? 0);
+
+        for (let y = 0; y < project.height; y += 1) {
+          for (let x = 0; x < project.width; x += 1) {
+            const idx = y * project.width + x;
+            if (!mask[idx]) {
+              continue;
+            }
+
+            const srcX = x - dx;
+            const srcY = y - dy;
+            const dstPixel = idx * 4;
+            if (srcX < 0 || srcY < 0 || srcX >= project.width || srcY >= project.height) {
+              nextData[dstPixel] = 0;
+              nextData[dstPixel + 1] = 0;
+              nextData[dstPixel + 2] = 0;
+              nextData[dstPixel + 3] = 0;
+              continue;
+            }
+
+            const srcPixel = (srcY * project.width + srcX) * 4;
+            nextData[dstPixel] = baseData[srcPixel];
+            nextData[dstPixel + 1] = baseData[srcPixel + 1];
+            nextData[dstPixel + 2] = baseData[srcPixel + 2];
+            nextData[dstPixel + 3] = baseData[srcPixel + 3];
+          }
+        }
+      }
+
+      return [layerId, {
+        ...cel,
+        pixelBuffer: {
+          ...cel.pixelBuffer,
+          data: nextData
+        }
+      }];
+    }))
+  };
+
+  return deformed;
+}
+
 function compositeFrame(frame, layers, width, height, opacity = 1) {
   const result = createPixelBuffer(width, height);
 
@@ -129,31 +196,32 @@ function applyLighting(buffer, lighting) {
   return lit;
 }
 
-export function compositeProjectFrame(project, frameId, opacity = 1) {
+export function compositeProjectFrame(project, frameId, opacity = 1, rigging = null) {
   const frame = project.frames.find((item) => item.id === frameId);
   if (!frame) {
     return createPixelBuffer(project.width, project.height);
   }
 
-  return compositeFrame(frame, project.layers, project.width, project.height, opacity);
+  const riggedFrame = applyRiggingToFrame(frame, project, rigging, frameId);
+  return compositeFrame(riggedFrame, project.layers, project.width, project.height, opacity);
 }
 
-export function renderCanvasBuffer(project, lighting = null) {
+export function renderCanvasBuffer(project, lighting = null, rigging = null) {
   const finalBuffer = createPixelBuffer(project.width, project.height);
 
   if (project.onionSkin.enabled) {
     const { previous, next } = getOnionFrames(project);
 
     for (const frameId of previous) {
-      compositeInto(finalBuffer, compositeProjectFrame(project, frameId, project.onionSkin.opacity));
+      compositeInto(finalBuffer, compositeProjectFrame(project, frameId, project.onionSkin.opacity, rigging));
     }
 
     for (const frameId of next) {
-      compositeInto(finalBuffer, compositeProjectFrame(project, frameId, project.onionSkin.opacity));
+      compositeInto(finalBuffer, compositeProjectFrame(project, frameId, project.onionSkin.opacity, rigging));
     }
   }
 
-  compositeInto(finalBuffer, compositeProjectFrame(project, project.selectedFrameId, 1));
+  compositeInto(finalBuffer, compositeProjectFrame(project, project.selectedFrameId, 1, rigging));
   return applyLighting(finalBuffer, lighting);
 }
 

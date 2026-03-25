@@ -44,7 +44,9 @@ function createBone(name = 'Bone') {
     id: `bone_${Math.random().toString(36).slice(2, 9)}`,
     name,
     start: { x: 32, y: 32 },
-    end: { x: 32, y: 16 }
+    end: { x: 32, y: 16 },
+    restStart: { x: 32, y: 32 },
+    restEnd: { x: 32, y: 16 }
   };
 }
 
@@ -73,6 +75,26 @@ function solveTwoBoneIK(bones, target) {
   return next;
 }
 
+
+
+function createEmptyMask(width, height) {
+  return new Uint8Array(width * height);
+}
+
+function paintMask(mask, width, height, x, y, radius = 1) {
+  const next = new Uint8Array(mask);
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      const px = x + dx;
+      const py = y + dy;
+      if (px < 0 || py < 0 || px >= width || py >= height) {
+        continue;
+      }
+      next[py * width + px] = 255;
+    }
+  }
+  return next;
+}
 const initialProject = createProject({
   width: 64,
   height: 64,
@@ -95,8 +117,12 @@ export const initialState = {
   wrapOffset: { x: 0, y: 0 },
   rigging: {
     enabled: false,
+    tool: 'draw',
     bones: [createBone('Root')],
-    selectedBoneId: null
+    selectedBoneId: null,
+    draftBone: null,
+    weights: {},
+    keyframes: {}
   },
   lighting: {
     enabled: false,
@@ -542,6 +568,70 @@ export function editorReducer(state, action) {
       return { ...state, wrapOffset: action.offset };
     case 'rigging_toggle':
       return { ...state, rigging: { ...state.rigging, enabled: !state.rigging.enabled } };
+    case 'rigging_set_tool':
+      return { ...state, rigging: { ...state.rigging, tool: action.tool } };
+    case 'rigging_start_draw':
+      return { ...state, rigging: { ...state.rigging, draftBone: { start: action.start, end: action.start } } };
+    case 'rigging_update_draw':
+      return state.rigging.draftBone ? { ...state, rigging: { ...state.rigging, draftBone: { ...state.rigging.draftBone, end: action.end } } } : state;
+    case 'rigging_commit_draw': {
+      if (!state.rigging.draftBone) {
+        return state;
+      }
+      const selected = state.rigging.bones.find((bone) => bone.id === state.rigging.selectedBoneId);
+      const start = action.connect && selected ? { ...selected.end } : state.rigging.draftBone.start;
+      const end = state.rigging.draftBone.end;
+      const bone = createBone(`Bone ${state.rigging.bones.length + 1}`);
+      bone.start = start;
+      bone.end = end;
+      bone.restStart = { ...start };
+      bone.restEnd = { ...end };
+      return { ...state, rigging: { ...state.rigging, bones: [...state.rigging.bones, bone], selectedBoneId: bone.id, draftBone: null } };
+    }
+    case 'rigging_move_bone':
+      return {
+        ...state,
+        rigging: {
+          ...state.rigging,
+          bones: state.rigging.bones.map((bone) => bone.id === action.boneId ? {
+            ...bone,
+            start: { x: Math.round(bone.start.x + action.dx), y: Math.round(bone.start.y + action.dy) },
+            end: { x: Math.round(bone.end.x + action.dx), y: Math.round(bone.end.y + action.dy) }
+          } : bone)
+        }
+      };
+    case 'rigging_paint_weight': {
+      const boneId = action.boneId ?? state.rigging.selectedBoneId;
+      if (!boneId) {
+        return state;
+      }
+      const currentMask = state.rigging.weights[boneId] ?? createEmptyMask(state.project.width, state.project.height);
+      const nextMask = paintMask(currentMask, state.project.width, state.project.height, action.x, action.y, action.radius ?? 1);
+      return { ...state, rigging: { ...state.rigging, weights: { ...state.rigging.weights, [boneId]: nextMask } } };
+    }
+    case 'rigging_keyframe_set': {
+      const boneId = action.boneId ?? state.rigging.selectedBoneId;
+      const bone = state.rigging.bones.find((item) => item.id === boneId);
+      if (!bone) {
+        return state;
+      }
+      const dx = Math.round(bone.end.x - bone.restEnd.x);
+      const dy = Math.round(bone.end.y - bone.restEnd.y);
+      const frameId = state.project.selectedFrameId;
+      return {
+        ...state,
+        rigging: {
+          ...state.rigging,
+          keyframes: {
+            ...state.rigging.keyframes,
+            [frameId]: {
+              ...(state.rigging.keyframes[frameId] ?? {}),
+              [boneId]: { dx, dy }
+            }
+          }
+        }
+      };
+    }
     case 'rigging_add_bone': {
       const bone = createBone(action.name || `Bone ${state.rigging.bones.length + 1}`);
       return { ...state, rigging: { ...state.rigging, bones: [...state.rigging.bones, bone], selectedBoneId: bone.id } };

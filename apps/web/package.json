@@ -17,7 +17,8 @@
     "vite": "^5.4.11",
     "@pixelforge/domain": "file:../../packages/domain",
     "@pixelforge/io": "file:../../packages/io",
-    "lucide-react": "^0.542.0"
+    "lucide-react": "^0.542.0",
+    "three": "^0.180.0"
   },
   "devDependencies": {
     "vitest": "^3.2.4",

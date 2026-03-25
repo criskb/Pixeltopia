@@ -16,6 +16,7 @@ import {
   Clapperboard
 } from 'lucide-react';
 import { useEditorDispatch, useEditorState } from '../../state/EditorStateContext';
+import ThreePreview from '../shader/ThreePreview';
 
 const swatches = ['#1D1D1D', '#FFFFFF', '#7C5CFF', '#00C2FF', '#37D67A', '#FFB020', '#FF5D73', '#8B5CF6'];
 const blendModes = ['normal', 'multiply', 'screen', 'add'];
@@ -100,11 +101,12 @@ export default function Inspector() {
       {workspaceMode === 'rigging' && (
         <section className="panel">
           <h2><Bone size={14} /> IK Rigging</h2>
-          <p className="subhead">Drag in canvas to solve a two-bone IK chain.</p>
+          <p className="subhead">Draw connected bones, move them, paint skin weights, and keyframe integer bone offsets.</p>
           <div className="layer-actions">
             <button onClick={() => dispatch({ type: 'rigging_toggle' })}>{rigging.enabled ? 'Hide Rig Overlay' : 'Show Rig Overlay'}</button>
             <button onClick={() => dispatch({ type: 'rigging_add_bone' })}><Plus size={14} />Bone</button>
           </div>
+          <button onClick={() => dispatch({ type: 'rigging_keyframe_set' })}>Set Bone Keyframe (Pixel Perfect)</button>
           <ul className="layer-list">
             {rigging.bones.map((bone) => (
               <li key={bone.id} className={bone.id === selectedBone?.id ? 'layer-row selected' : 'layer-row'}>
@@ -129,6 +131,7 @@ export default function Inspector() {
             <button onClick={() => dispatch({ type: 'lighting_set', updates: { direction: 220, intensity: 0.65, ambient: 0.4, color: '#8ac6ff' } })}>Moonlight</button>
             <button onClick={() => dispatch({ type: 'lighting_set', updates: { direction: 90, intensity: 0.9, ambient: 0.2, color: '#fff0b8' } })}>Top Light</button>
           </div>
+          <ThreePreview />
         </section>
       )}
     </aside>
