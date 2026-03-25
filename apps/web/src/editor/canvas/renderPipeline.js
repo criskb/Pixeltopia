@@ -1,7 +1,24 @@
 import { createPixelBuffer } from './pixelBuffer';
 import { getOnionFrames } from '@pixelforge/domain';
 
-function blendPixel(dst, src, opacity = 1) {
+function blendChannels(dst, src, mode) {
+  switch (mode) {
+    case 'multiply':
+      return [(src[0] * dst[0]) / 255, (src[1] * dst[1]) / 255, (src[2] * dst[2]) / 255];
+    case 'screen':
+      return [
+        255 - ((255 - src[0]) * (255 - dst[0])) / 255,
+        255 - ((255 - src[1]) * (255 - dst[1])) / 255,
+        255 - ((255 - src[2]) * (255 - dst[2])) / 255
+      ];
+    case 'add':
+      return [Math.min(255, src[0] + dst[0]), Math.min(255, src[1] + dst[1]), Math.min(255, src[2] + dst[2])];
+    default:
+      return [src[0], src[1], src[2]];
+  }
+}
+
+function blendPixel(dst, src, opacity = 1, mode = 'normal') {
   const srcAlpha = (src[3] / 255) * opacity;
   if (srcAlpha <= 0) {
     return dst;
@@ -13,12 +30,80 @@ function blendPixel(dst, src, opacity = 1) {
     return [0, 0, 0, 0];
   }
 
+  const blendedRgb = blendChannels(dst, src, mode);
   return [
-    Math.round((src[0] * srcAlpha + dst[0] * dstAlpha * (1 - srcAlpha)) / outAlpha),
-    Math.round((src[1] * srcAlpha + dst[1] * dstAlpha * (1 - srcAlpha)) / outAlpha),
-    Math.round((src[2] * srcAlpha + dst[2] * dstAlpha * (1 - srcAlpha)) / outAlpha),
+    Math.round((blendedRgb[0] * srcAlpha + dst[0] * dstAlpha * (1 - srcAlpha)) / outAlpha),
+    Math.round((blendedRgb[1] * srcAlpha + dst[1] * dstAlpha * (1 - srcAlpha)) / outAlpha),
+    Math.round((blendedRgb[2] * srcAlpha + dst[2] * dstAlpha * (1 - srcAlpha)) / outAlpha),
     Math.round(outAlpha * 255)
   ];
+}
+
+
+function applyRiggingToFrame(frame, project, rigging, frameId) {
+  if (!rigging?.enabled || !rigging?.weights) {
+    return frame;
+  }
+
+  const keyframe = rigging.keyframes?.[frameId];
+  if (!keyframe) {
+    return frame;
+  }
+
+  const deformed = {
+    ...frame,
+    cels: Object.fromEntries(Object.entries(frame.cels).map(([layerId, cel]) => {
+      const nextData = new Uint8ClampedArray(cel.pixelBuffer.data);
+      const baseData = new Uint8ClampedArray(cel.pixelBuffer.data);
+
+      for (const bone of rigging.bones) {
+        const mask = rigging.weights[bone.id];
+        const offset = keyframe[bone.id];
+        if (!mask || !offset) {
+          continue;
+        }
+
+        const dx = Math.round(offset.dx ?? 0);
+        const dy = Math.round(offset.dy ?? 0);
+
+        for (let y = 0; y < project.height; y += 1) {
+          for (let x = 0; x < project.width; x += 1) {
+            const idx = y * project.width + x;
+            if (!mask[idx]) {
+              continue;
+            }
+
+            const srcX = x - dx;
+            const srcY = y - dy;
+            const dstPixel = idx * 4;
+            if (srcX < 0 || srcY < 0 || srcX >= project.width || srcY >= project.height) {
+              nextData[dstPixel] = 0;
+              nextData[dstPixel + 1] = 0;
+              nextData[dstPixel + 2] = 0;
+              nextData[dstPixel + 3] = 0;
+              continue;
+            }
+
+            const srcPixel = (srcY * project.width + srcX) * 4;
+            nextData[dstPixel] = baseData[srcPixel];
+            nextData[dstPixel + 1] = baseData[srcPixel + 1];
+            nextData[dstPixel + 2] = baseData[srcPixel + 2];
+            nextData[dstPixel + 3] = baseData[srcPixel + 3];
+          }
+        }
+      }
+
+      return [layerId, {
+        ...cel,
+        pixelBuffer: {
+          ...cel.pixelBuffer,
+          data: nextData
+        }
+      }];
+    }))
+  };
+
+  return deformed;
 }
 
 function compositeFrame(frame, layers, width, height, opacity = 1) {
@@ -36,13 +121,8 @@ function compositeFrame(frame, layers, width, height, opacity = 1) {
 
     for (let i = 0; i < result.data.length; i += 4) {
       const dst = [result.data[i], result.data[i + 1], result.data[i + 2], result.data[i + 3]];
-      const src = [
-        cel.pixelBuffer.data[i],
-        cel.pixelBuffer.data[i + 1],
-        cel.pixelBuffer.data[i + 2],
-        cel.pixelBuffer.data[i + 3]
-      ];
-      const blended = blendPixel(dst, src, opacity);
+      const src = [cel.pixelBuffer.data[i], cel.pixelBuffer.data[i + 1], cel.pixelBuffer.data[i + 2], cel.pixelBuffer.data[i + 3]];
+      const blended = blendPixel(dst, src, opacity * (layer.opacity ?? 1), layer.blendMode ?? 'normal');
       result.data[i] = blended[0];
       result.data[i + 1] = blended[1];
       result.data[i + 2] = blended[2];
@@ -67,32 +147,82 @@ function compositeInto(base, overlay) {
   }
 }
 
-export function compositeProjectFrame(project, frameId, opacity = 1) {
+function applyLighting(buffer, lighting) {
+  if (!lighting?.enabled) {
+    return buffer;
+  }
+
+  const lit = {
+    width: buffer.width,
+    height: buffer.height,
+    data: new Uint8ClampedArray(buffer.data)
+  };
+
+  const radians = (lighting.direction ?? 45) * (Math.PI / 180);
+  const lightVector = { x: Math.cos(radians), y: Math.sin(radians) };
+  const intensity = Math.max(0, Math.min(1, lighting.intensity ?? 0.7));
+  const ambient = Math.max(0, Math.min(1, lighting.ambient ?? 0.3));
+  const lightTint = lighting.color ?? '#ffd38a';
+  const tint = [
+    Number.parseInt(lightTint.slice(1, 3), 16),
+    Number.parseInt(lightTint.slice(3, 5), 16),
+    Number.parseInt(lightTint.slice(5, 7), 16)
+  ];
+
+  for (let y = 1; y < lit.height - 1; y += 1) {
+    for (let x = 1; x < lit.width - 1; x += 1) {
+      const i = (y * lit.width + x) * 4;
+      const a = lit.data[i + 3] / 255;
+      if (a <= 0) {
+        continue;
+      }
+
+      const leftA = lit.data[(y * lit.width + (x - 1)) * 4 + 3] / 255;
+      const rightA = lit.data[(y * lit.width + (x + 1)) * 4 + 3] / 255;
+      const upA = lit.data[((y - 1) * lit.width + x) * 4 + 3] / 255;
+      const downA = lit.data[((y + 1) * lit.width + x) * 4 + 3] / 255;
+
+      const normalX = rightA - leftA;
+      const normalY = downA - upA;
+      const shade = Math.max(0, (normalX * lightVector.x + normalY * lightVector.y + 1) / 2);
+      const energy = ambient + intensity * shade;
+
+      lit.data[i] = Math.min(255, lit.data[i] * energy + tint[0] * 0.18 * intensity);
+      lit.data[i + 1] = Math.min(255, lit.data[i + 1] * energy + tint[1] * 0.18 * intensity);
+      lit.data[i + 2] = Math.min(255, lit.data[i + 2] * energy + tint[2] * 0.18 * intensity);
+    }
+  }
+
+  return lit;
+}
+
+export function compositeProjectFrame(project, frameId, opacity = 1, rigging = null) {
   const frame = project.frames.find((item) => item.id === frameId);
   if (!frame) {
     return createPixelBuffer(project.width, project.height);
   }
 
-  return compositeFrame(frame, project.layers, project.width, project.height, opacity);
+  const riggedFrame = applyRiggingToFrame(frame, project, rigging, frameId);
+  return compositeFrame(riggedFrame, project.layers, project.width, project.height, opacity);
 }
 
-export function renderCanvasBuffer(project) {
+export function renderCanvasBuffer(project, lighting = null, rigging = null) {
   const finalBuffer = createPixelBuffer(project.width, project.height);
 
   if (project.onionSkin.enabled) {
     const { previous, next } = getOnionFrames(project);
 
     for (const frameId of previous) {
-      compositeInto(finalBuffer, compositeProjectFrame(project, frameId, project.onionSkin.opacity));
+      compositeInto(finalBuffer, compositeProjectFrame(project, frameId, project.onionSkin.opacity, rigging));
     }
 
     for (const frameId of next) {
-      compositeInto(finalBuffer, compositeProjectFrame(project, frameId, project.onionSkin.opacity));
+      compositeInto(finalBuffer, compositeProjectFrame(project, frameId, project.onionSkin.opacity, rigging));
     }
   }
 
-  compositeInto(finalBuffer, compositeProjectFrame(project, project.selectedFrameId, 1));
-  return finalBuffer;
+  compositeInto(finalBuffer, compositeProjectFrame(project, project.selectedFrameId, 1, rigging));
+  return applyLighting(finalBuffer, lighting);
 }
 
 export function renderWrapPreviewBuffer(buffer, offset = { x: 0, y: 0 }) {
