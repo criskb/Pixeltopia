@@ -1,13 +1,18 @@
 import { createContext, useContext, useEffect, useMemo, useReducer } from 'react';
 import {
+  addLayer,
   advancePlayhead,
   createFrameAfter,
   createProject,
   deleteFrame,
   duplicateFrame,
   getSelectedCel,
+  removeLayer,
   selectFrame,
   selectLayer,
+  setLayerBlendMode,
+  setLayerOpacity,
+  setFrameDuration,
   setOnionSkin,
   setPlayback,
   toggleLayerLock,
@@ -34,10 +39,44 @@ const AUTOSAVE_STORE = 'snapshots';
 const AUTOSAVE_INTERVAL_MS = 12_000;
 const DEFAULT_HISTORY_BUDGET_BYTES = 8 * 1024 * 1024;
 
+function createBone(name = 'Bone') {
+  return {
+    id: `bone_${Math.random().toString(36).slice(2, 9)}`,
+    name,
+    start: { x: 32, y: 32 },
+    end: { x: 32, y: 16 }
+  };
+}
+
+function solveTwoBoneIK(bones, target) {
+  if (bones.length < 2) {
+    return bones;
+  }
+
+  const root = bones[0].start;
+  const l1 = Math.hypot(bones[0].end.x - bones[0].start.x, bones[0].end.y - bones[0].start.y) || 1;
+  const l2 = Math.hypot(bones[1].end.x - bones[1].start.x, bones[1].end.y - bones[1].start.y) || 1;
+  const dx = target.x - root.x;
+  const dy = target.y - root.y;
+  const dist = Math.min(Math.max(Math.hypot(dx, dy), 0.0001), l1 + l2 - 0.0001);
+
+  const a = Math.acos(Math.min(1, Math.max(-1, ((l1 * l1) + (dist * dist) - (l2 * l2)) / (2 * l1 * dist))));
+  const b = Math.atan2(dy, dx);
+  const mid = {
+    x: root.x + Math.cos(b - a) * l1,
+    y: root.y + Math.sin(b - a) * l1
+  };
+
+  const next = [...bones];
+  next[0] = { ...next[0], end: mid };
+  next[1] = { ...next[1], start: mid, end: { x: target.x, y: target.y } };
+  return next;
+}
+
 const initialProject = createProject({
   width: 64,
   height: 64,
-  layerNames: ['FX', 'Line Art', 'Base Colors', 'Background'],
+  layerNames: ['Layer 1'],
   frameCount: 12,
   createPixelBuffer
 });
@@ -47,12 +86,25 @@ export const initialState = {
   currentColor: '#7C5CFF',
   brushSize: 1,
   activeTool: 'pencil',
+  workspaceMode: 'draw',
   zoomLevel: 8,
   cursor: { x: 0, y: 0 },
   selectionMask: null,
   selectionType: null,
   wrapPreviewEnabled: false,
   wrapOffset: { x: 0, y: 0 },
+  rigging: {
+    enabled: false,
+    bones: [createBone('Root')],
+    selectedBoneId: null
+  },
+  lighting: {
+    enabled: false,
+    direction: 40,
+    intensity: 0.7,
+    ambient: 0.35,
+    color: '#ffd38a'
+  },
   history: {
     undoStack: [],
     redoStack: [],
@@ -226,6 +278,16 @@ function runMutation(state, action) {
       return { ...state, project: duplicateFrame(state.project) };
     case 'frame_delete':
       return { ...state, project: deleteFrame(state.project) };
+    case 'frame_set_duration':
+      return { ...state, project: setFrameDuration(state.project, action.frameId ?? state.project.selectedFrameId, action.duration) };
+    case 'layer_create':
+      return { ...state, project: addLayer(state.project, { createPixelBuffer, name: action.name }) };
+    case 'layer_delete':
+      return { ...state, project: removeLayer(state.project, action.layerId) };
+    case 'layer_set_blend_mode':
+      return { ...state, project: setLayerBlendMode(state.project, action.layerId, action.blendMode) };
+    case 'layer_set_opacity':
+      return { ...state, project: setLayerOpacity(state.project, action.layerId, action.opacity) };
     default:
       return state;
   }
@@ -279,7 +341,9 @@ function toAutosaveSnapshot(state) {
       activeTool: state.activeTool,
       zoomLevel: state.zoomLevel,
       wrapPreviewEnabled: state.wrapPreviewEnabled,
-      wrapOffset: state.wrapOffset
+      wrapOffset: state.wrapOffset,
+      rigging: state.rigging,
+      lighting: state.lighting
     }
   };
 }
@@ -446,6 +510,8 @@ export function editorReducer(state, action) {
     }
     case 'set_active_tool':
       return { ...state, activeTool: action.tool };
+    case 'set_workspace_mode':
+      return { ...state, workspaceMode: action.mode };
     case 'set_color':
       return { ...state, currentColor: action.color };
     case 'set_zoom':
@@ -474,6 +540,35 @@ export function editorReducer(state, action) {
       return { ...state, wrapPreviewEnabled: !state.wrapPreviewEnabled };
     case 'wrap_offset_set':
       return { ...state, wrapOffset: action.offset };
+    case 'rigging_toggle':
+      return { ...state, rigging: { ...state.rigging, enabled: !state.rigging.enabled } };
+    case 'rigging_add_bone': {
+      const bone = createBone(action.name || `Bone ${state.rigging.bones.length + 1}`);
+      return { ...state, rigging: { ...state.rigging, bones: [...state.rigging.bones, bone], selectedBoneId: bone.id } };
+    }
+    case 'rigging_select_bone':
+      return { ...state, rigging: { ...state.rigging, selectedBoneId: action.boneId } };
+    case 'rigging_delete_bone': {
+      if (state.rigging.bones.length <= 1) {
+        return state;
+      }
+      const bones = state.rigging.bones.filter((bone) => bone.id !== action.boneId);
+      return { ...state, rigging: { ...state.rigging, bones, selectedBoneId: bones[0]?.id ?? null } };
+    }
+    case 'rigging_update_bone':
+      return {
+        ...state,
+        rigging: {
+          ...state.rigging,
+          bones: state.rigging.bones.map((bone) => bone.id === action.boneId ? { ...bone, ...action.updates } : bone)
+        }
+      };
+    case 'rigging_ik_drag':
+      return { ...state, rigging: { ...state.rigging, bones: solveTwoBoneIK(state.rigging.bones, action.target) } };
+    case 'lighting_toggle':
+      return { ...state, lighting: { ...state.lighting, enabled: !state.lighting.enabled } };
+    case 'lighting_set':
+      return { ...state, lighting: { ...state.lighting, ...action.updates } };
     case 'frame_select':
       return { ...state, project: selectFrame(state.project, action.frameId) };
     case 'layer_toggle_visibility':
@@ -499,6 +594,11 @@ export function editorReducer(state, action) {
     case 'frame_create':
     case 'frame_duplicate':
     case 'frame_delete':
+    case 'frame_set_duration':
+    case 'layer_create':
+    case 'layer_delete':
+    case 'layer_set_blend_mode':
+    case 'layer_set_opacity':
       return buildCommandResult(state, runMutation(state, action), action.type);
     default:
       return state;
@@ -539,10 +639,12 @@ export function EditorProvider({ children }) {
       return undefined;
     }
 
-    const ms = 1000 / Math.max(1, state.project.playback.fps);
+    const frame = state.project.frames.find((item) => item.id === state.project.selectedFrameId);
+    const frameDuration = Math.max(1, frame?.duration ?? 1);
+    const ms = (1000 / Math.max(1, state.project.playback.fps)) * frameDuration;
     const timer = setInterval(() => dispatch({ type: 'playback_advance', step: 1 }), ms);
     return () => clearInterval(timer);
-  }, [state.project.playback.fps, state.project.playback.isPlaying]);
+  }, [state.project.frames, state.project.selectedFrameId, state.project.playback.fps, state.project.playback.isPlaying]);
 
   useEffect(() => {
     const timer = setInterval(() => {
