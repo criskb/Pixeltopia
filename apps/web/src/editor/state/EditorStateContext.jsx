@@ -38,6 +38,15 @@ const AUTOSAVE_STORE = 'snapshots';
 const AUTOSAVE_INTERVAL_MS = 12_000;
 const DEFAULT_HISTORY_BUDGET_BYTES = 8 * 1024 * 1024;
 
+function createBone(name = 'Bone') {
+  return {
+    id: `bone_${Math.random().toString(36).slice(2, 9)}`,
+    name,
+    start: { x: 32, y: 32 },
+    end: { x: 32, y: 16 }
+  };
+}
+
 const initialProject = createProject({
   width: 64,
   height: 64,
@@ -57,6 +66,18 @@ export const initialState = {
   selectionType: null,
   wrapPreviewEnabled: false,
   wrapOffset: { x: 0, y: 0 },
+  rigging: {
+    enabled: false,
+    bones: [createBone('Root')],
+    selectedBoneId: null
+  },
+  lighting: {
+    enabled: false,
+    direction: 40,
+    intensity: 0.7,
+    ambient: 0.35,
+    color: '#ffd38a'
+  },
   history: {
     undoStack: [],
     redoStack: [],
@@ -291,7 +312,9 @@ function toAutosaveSnapshot(state) {
       activeTool: state.activeTool,
       zoomLevel: state.zoomLevel,
       wrapPreviewEnabled: state.wrapPreviewEnabled,
-      wrapOffset: state.wrapOffset
+      wrapOffset: state.wrapOffset,
+      rigging: state.rigging,
+      lighting: state.lighting
     }
   };
 }
@@ -486,6 +509,33 @@ export function editorReducer(state, action) {
       return { ...state, wrapPreviewEnabled: !state.wrapPreviewEnabled };
     case 'wrap_offset_set':
       return { ...state, wrapOffset: action.offset };
+    case 'rigging_toggle':
+      return { ...state, rigging: { ...state.rigging, enabled: !state.rigging.enabled } };
+    case 'rigging_add_bone': {
+      const bone = createBone(action.name || `Bone ${state.rigging.bones.length + 1}`);
+      return { ...state, rigging: { ...state.rigging, bones: [...state.rigging.bones, bone], selectedBoneId: bone.id } };
+    }
+    case 'rigging_select_bone':
+      return { ...state, rigging: { ...state.rigging, selectedBoneId: action.boneId } };
+    case 'rigging_delete_bone': {
+      if (state.rigging.bones.length <= 1) {
+        return state;
+      }
+      const bones = state.rigging.bones.filter((bone) => bone.id !== action.boneId);
+      return { ...state, rigging: { ...state.rigging, bones, selectedBoneId: bones[0]?.id ?? null } };
+    }
+    case 'rigging_update_bone':
+      return {
+        ...state,
+        rigging: {
+          ...state.rigging,
+          bones: state.rigging.bones.map((bone) => bone.id === action.boneId ? { ...bone, ...action.updates } : bone)
+        }
+      };
+    case 'lighting_toggle':
+      return { ...state, lighting: { ...state.lighting, enabled: !state.lighting.enabled } };
+    case 'lighting_set':
+      return { ...state, lighting: { ...state.lighting, ...action.updates } };
     case 'frame_select':
       return { ...state, project: selectFrame(state.project, action.frameId) };
     case 'layer_toggle_visibility':

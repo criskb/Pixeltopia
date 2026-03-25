@@ -374,6 +374,55 @@ button:focus-visible {
   background: #00c2ff;
 }
 
+
+.tab-panel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tab-btn {
+  justify-content: center;
+  padding: 8px;
+}
+
+.tab-btn.active {
+  background: rgba(124, 92, 255, 0.24);
+  border-color: var(--accent-primary);
+}
+
+.rig-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.rig-bone {
+  position: absolute;
+}
+
+.rig-segment {
+  position: absolute;
+  height: 2px;
+  background: rgba(255, 209, 87, 0.85);
+  transform-origin: 0 50%;
+}
+
+.rig-joint {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  margin-top: -4px;
+  border-radius: 999px;
+  background: #ffd157;
+  border: 1px solid #664600;
+}
+
+.rig-bone.selected .rig-segment,
+.rig-bone.selected .rig-joint {
+  background: #ff7ac3;
+}
 .modal-overlay {
   position: fixed;
   inset: 0;
