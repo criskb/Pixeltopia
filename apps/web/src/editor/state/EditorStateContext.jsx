@@ -95,6 +95,21 @@ function paintMask(mask, width, height, x, y, radius = 1) {
   }
   return next;
 }
+
+function eraseMask(mask, width, height, x, y, radius = 1) {
+  const next = new Uint8Array(mask);
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      const px = x + dx;
+      const py = y + dy;
+      if (px < 0 || py < 0 || px >= width || py >= height) {
+        continue;
+      }
+      next[py * width + px] = 0;
+    }
+  }
+  return next;
+}
 const initialProject = createProject({
   width: 64,
   height: 64,
@@ -681,6 +696,10 @@ export function editorReducer(state, action) {
       return { ...state, material: { ...state.material, emissiveMask: createEmptyMask(state.project.width, state.project.height) } };
     case 'material_paint': {
       const mask = paintMask(state.material.emissiveMask, state.project.width, state.project.height, action.x, action.y, action.radius ?? 1);
+      return { ...state, material: { ...state.material, emissiveMask: mask } };
+    }
+    case 'material_erase': {
+      const mask = eraseMask(state.material.emissiveMask, state.project.width, state.project.height, action.x, action.y, action.radius ?? 1);
       return { ...state, material: { ...state.material, emissiveMask: mask } };
     }
     case 'frame_select':

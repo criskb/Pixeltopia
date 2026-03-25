@@ -18,7 +18,7 @@ const modeTools = {
     { key: 'weight', label: 'Skin Paint', shortcut: 'W', icon: PenSquare },
     { key: 'ik', label: 'IK Drag', shortcut: 'K', icon: Link2 }
   ],
-  shader: [{ key: 'light', label: 'Light', shortcut: 'L', icon: SunMedium }, { key: 'emissive', label: 'Emissive', shortcut: 'E', icon: PenSquare }]
+  shader: [{ key: 'light', label: 'Light', shortcut: 'L', icon: SunMedium }, { key: 'emissive', label: 'Emissive+', shortcut: 'E', icon: PenSquare }, { key: 'emissive-erase', label: 'Emissive-', shortcut: 'R', icon: Eraser }]
 };
 
 export default function ToolRail() {

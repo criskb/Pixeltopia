@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { Suspense, lazy, useMemo } from 'react';
 import {
   Eye,
   EyeOff,
@@ -16,7 +16,7 @@ import {
   Clapperboard
 } from 'lucide-react';
 import { useEditorDispatch, useEditorState } from '../../state/EditorStateContext';
-import ThreePreview from '../shader/ThreePreview';
+const ThreePreview = lazy(() => import('../shader/ThreePreview'));
 
 const swatches = ['#1D1D1D', '#FFFFFF', '#7C5CFF', '#00C2FF', '#37D67A', '#FFB020', '#FF5D73', '#8B5CF6'];
 const blendModes = ['normal', 'multiply', 'screen', 'add'];
@@ -129,13 +129,13 @@ export default function Inspector() {
           <label className="control-row"><span>Light Tint</span><input type="color" value={lighting.color} onChange={(e) => dispatch({ type: 'lighting_set', updates: { color: e.target.value } })} /></label>
           <label className="control-row"><span>Emissive Strength</span><input type="range" min="0" max="1" step="0.01" value={material.emissiveStrength} onChange={(e) => dispatch({ type: 'material_set_strength', value: Number(e.target.value) })} /></label>
           <button onClick={() => dispatch({ type: 'material_clear_emissive' })}>Clear Emissive Mask</button>
-          <p className="subhead">Use Shader → Emissive tool in the rail and paint directly on canvas for live glow preview.</p>
+          <p className="subhead">Use Shader → Emissive tool in the rail and paint directly on canvas for live glow preview. Active: {material.tool}</p>
           <div className="preset-row">
             <button onClick={() => dispatch({ type: 'lighting_set', updates: { direction: 30, intensity: 0.75, ambient: 0.25, color: '#ffd38a' } })}>Sunrise</button>
             <button onClick={() => dispatch({ type: 'lighting_set', updates: { direction: 220, intensity: 0.65, ambient: 0.4, color: '#8ac6ff' } })}>Moonlight</button>
             <button onClick={() => dispatch({ type: 'lighting_set', updates: { direction: 90, intensity: 0.9, ambient: 0.2, color: '#fff0b8' } })}>Top Light</button>
           </div>
-          <ThreePreview />
+          <Suspense fallback={<p className="subhead">Loading 3D shader preview…</p>}><ThreePreview /></Suspense>
         </section>
       )}
     </aside>
