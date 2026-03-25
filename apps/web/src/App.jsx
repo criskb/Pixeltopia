@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import CanvasViewport from './editor/canvas/CanvasViewport';
 import { EditorProvider, useEditorDispatch, useEditorState } from './editor/state/EditorStateContext';
 
@@ -5,7 +6,9 @@ const tools = [
   { key: 'pencil', label: 'Pencil', shortcut: 'B' },
   { key: 'eraser', label: 'Eraser', shortcut: 'E' },
   { key: 'fill', label: 'Fill', shortcut: 'G' },
-  { key: 'picker', label: 'Picker', shortcut: 'I' }
+  { key: 'picker', label: 'Picker', shortcut: 'I' },
+  { key: 'select-rect', label: 'Sel Rect', shortcut: 'M' },
+  { key: 'select-lasso', label: 'Lasso', shortcut: 'L' }
 ];
 
 const swatches = ['#1D1D1D', '#FFFFFF', '#7C5CFF', '#00C2FF', '#37D67A', '#FFB020', '#FF5D73', '#8B5CF6'];
@@ -32,7 +35,7 @@ function ToolRail() {
 }
 
 function Inspector() {
-  const { currentColor, brushSize, zoomLevel, layers, selectedLayerId, onionSkin } = useEditorState();
+  const { currentColor, brushSize, zoomLevel, layers, selectedLayerId, onionSkin, wrapPreviewEnabled } = useEditorState();
   const dispatch = useEditorDispatch();
 
   return (
@@ -89,6 +92,11 @@ function Inspector() {
         <h2>Onion Skin</h2>
         <button onClick={() => dispatch({ type: 'onion_toggle' })}>{onionSkin.enabled ? 'Disable' : 'Enable'}</button>
       </section>
+
+      <section className="panel">
+        <h2>Wrap Preview</h2>
+        <button onClick={() => dispatch({ type: 'wrap_preview_toggle' })}>{wrapPreviewEnabled ? 'Disable 3x3' : 'Enable 3x3'}</button>
+      </section>
     </aside>
   );
 }
@@ -133,7 +141,46 @@ function Timeline() {
 }
 
 function Workspace() {
-  const { activeTool, currentColor, cursor, zoomLevel, width, height } = useEditorState();
+  const { activeTool, currentColor, cursor, zoomLevel, width, height, wrapPreviewEnabled } = useEditorState();
+  const dispatch = useEditorDispatch();
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      const withMeta = event.metaKey || event.ctrlKey;
+
+      if (!withMeta && key === 'm') dispatch({ type: 'set_active_tool', tool: 'select-rect' });
+      if (!withMeta && key === 'l') dispatch({ type: 'set_active_tool', tool: 'select-lasso' });
+      if (!withMeta && key === 'b') dispatch({ type: 'set_active_tool', tool: 'pencil' });
+      if (!withMeta && key === 'e') dispatch({ type: 'set_active_tool', tool: 'eraser' });
+      if (!withMeta && key === 'g') dispatch({ type: 'set_active_tool', tool: 'fill' });
+      if (!withMeta && key === 'i') dispatch({ type: 'set_active_tool', tool: 'picker' });
+      if (key === 'escape') dispatch({ type: 'clear_selection' });
+      if (key === 'w') dispatch({ type: 'wrap_preview_toggle' });
+
+      if (withMeta && key === 'arrowleft') dispatch({ type: 'transform_pixels', transform: 'move', dx: -1, dy: 0 });
+      if (withMeta && key === 'arrowright') dispatch({ type: 'transform_pixels', transform: 'move', dx: 1, dy: 0 });
+      if (withMeta && key === 'arrowup') dispatch({ type: 'transform_pixels', transform: 'move', dx: 0, dy: -1 });
+      if (withMeta && key === 'arrowdown') dispatch({ type: 'transform_pixels', transform: 'move', dx: 0, dy: 1 });
+      if (withMeta && key === 'r') dispatch({ type: 'transform_pixels', transform: 'rotate', steps: event.shiftKey ? -1 : 1 });
+      if (withMeta && key === 'h') dispatch({ type: 'transform_pixels', transform: 'flip', axis: 'horizontal' });
+      if (withMeta && key === 'v') dispatch({ type: 'transform_pixels', transform: 'flip', axis: 'vertical' });
+      if (withMeta && key === '=') dispatch({ type: 'transform_pixels', transform: 'scale', scaleX: 2, scaleY: 2 });
+      if (withMeta && key === '-') dispatch({ type: 'transform_pixels', transform: 'scale', scaleX: 0.5, scaleY: 0.5 });
+
+      if (event.altKey && key === 'arrowleft') dispatch({ type: 'transform_pixels', transform: 'offset_wrap', dx: -1, dy: 0 });
+      if (event.altKey && key === 'arrowright') dispatch({ type: 'transform_pixels', transform: 'offset_wrap', dx: 1, dy: 0 });
+      if (event.altKey && key === 'arrowup') dispatch({ type: 'transform_pixels', transform: 'offset_wrap', dx: 0, dy: -1 });
+      if (event.altKey && key === 'arrowdown') dispatch({ type: 'transform_pixels', transform: 'offset_wrap', dx: 0, dy: 1 });
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [dispatch]);
 
   return (
     <>
@@ -142,7 +189,7 @@ function Workspace() {
       <main className="workspace" aria-label="Workspace">
         <div className="canvas-header">
           <span>sprite_idle.png · {width}×{height}</span>
-          <span>Zoom {zoomLevel * 100}% · Grid On</span>
+          <span>Zoom {zoomLevel * 100}% · Grid On · Wrap {wrapPreviewEnabled ? '3x3' : 'Off'}</span>
         </div>
         <div className="canvas-backdrop">
           <CanvasViewport />

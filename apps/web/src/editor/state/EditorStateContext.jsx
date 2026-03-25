@@ -15,6 +15,15 @@ import {
   updateCelPixelBuffer
 } from '@pixelforge/domain';
 import { createPixelBuffer } from '../canvas/pixelBuffer';
+import {
+  createLassoSelectionMask,
+  createRectSelectionMask,
+  flipSelection,
+  moveSelection,
+  offsetBufferWrap,
+  rotateSelection90,
+  scaleSelectionNearest
+} from '../canvas/selectionTransforms';
 
 const EditorStateContext = createContext(null);
 const EditorDispatchContext = createContext(null);
@@ -33,8 +42,34 @@ const initialState = {
   brushSize: 1,
   activeTool: 'pencil',
   zoomLevel: 8,
-  cursor: { x: 0, y: 0 }
+  cursor: { x: 0, y: 0 },
+  selectionMask: null,
+  selectionType: null,
+  wrapPreviewEnabled: false,
+  wrapOffset: { x: 0, y: 0 }
 };
+
+
+function applyTransform(pixelBuffer, action, selectionMask) {
+  if (!pixelBuffer) {
+    return null;
+  }
+
+  switch (action.transform) {
+    case 'move':
+      return moveSelection(pixelBuffer, selectionMask, action.dx ?? 0, action.dy ?? 0, Boolean(action.wrap));
+    case 'scale':
+      return scaleSelectionNearest(pixelBuffer, selectionMask, action.scaleX ?? 1, action.scaleY ?? 1);
+    case 'rotate':
+      return rotateSelection90(pixelBuffer, selectionMask, action.steps ?? 1);
+    case 'flip':
+      return flipSelection(pixelBuffer, selectionMask, action.axis ?? 'horizontal');
+    case 'offset_wrap':
+      return offsetBufferWrap(pixelBuffer, action.dx ?? 0, action.dy ?? 0);
+    default:
+      return null;
+  }
+}
 
 function editorReducer(state, action) {
   switch (action.type) {
@@ -48,6 +83,41 @@ function editorReducer(state, action) {
       return { ...state, cursor: action.cursor };
     case 'set_brush_size':
       return { ...state, brushSize: action.size };
+    case 'set_selection':
+      return { ...state, selectionMask: action.mask, selectionType: action.selectionType ?? state.selectionType };
+    case 'clear_selection':
+      return { ...state, selectionMask: null, selectionType: null };
+    case 'selection_rect':
+      return {
+        ...state,
+        selectionType: 'rect',
+        selectionMask: createRectSelectionMask(state.project.width, state.project.height, action.start, action.end)
+      };
+    case 'selection_lasso':
+      return {
+        ...state,
+        selectionType: 'lasso',
+        selectionMask: createLassoSelectionMask(state.project.width, state.project.height, action.points)
+      };
+    case 'wrap_preview_toggle':
+      return { ...state, wrapPreviewEnabled: !state.wrapPreviewEnabled };
+    case 'wrap_offset_set':
+      return { ...state, wrapOffset: action.offset };
+    case 'transform_pixels': {
+      const selectedCel = getSelectedCel(state.project);
+      const transformed = applyTransform(selectedCel?.pixelBuffer, action, state.selectionMask);
+      if (!transformed) {
+        return state;
+      }
+
+      return {
+        ...state,
+        project: updateCelPixelBuffer(state.project, { pixelBuffer: transformed }),
+        wrapOffset: action.transform === 'offset_wrap'
+          ? { x: state.wrapOffset.x + (action.dx ?? 0), y: state.wrapOffset.y + (action.dy ?? 0) }
+          : state.wrapOffset
+      };
+    }
     case 'update_pixels':
       return { ...state, project: updateCelPixelBuffer(state.project, { pixelBuffer: action.pixelBuffer }) };
     case 'frame_create':
@@ -106,7 +176,11 @@ export function EditorProvider({ children }) {
     selectedLayerId: state.project.selectedLayerId,
     playback: state.project.playback,
     onionSkin: state.project.onionSkin,
-    project: state.project
+    project: state.project,
+    selectionMask: state.selectionMask,
+    selectionType: state.selectionType,
+    wrapPreviewEnabled: state.wrapPreviewEnabled,
+    wrapOffset: state.wrapOffset
   }), [state, selectedCel]);
 
   return (
