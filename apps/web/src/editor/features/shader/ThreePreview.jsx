@@ -6,7 +6,7 @@ import { renderCanvasBuffer } from '../../canvas/renderPipeline';
 export default function ThreePreview() {
   const mountRef = useRef(null);
   const runtimeRef = useRef(null);
-  const { project, lighting } = useEditorState();
+  const { project, lighting, material } = useEditorState();
 
   useEffect(() => {
     const container = mountRef.current;
@@ -83,7 +83,7 @@ export default function ThreePreview() {
     rt.directional.intensity = Math.max(0.05, lighting.enabled ? lighting.intensity ?? 0.7 : 0.05);
     rt.ambient.intensity = lighting.enabled ? lighting.ambient ?? 0.35 : 0.35;
 
-    const composite = renderCanvasBuffer(project, null);
+    const composite = renderCanvasBuffer(project, null, null, material);
     const data = new Uint8Array(composite.data);
     const texture = new THREE.DataTexture(data, composite.width, composite.height, THREE.RGBAFormat);
     texture.magFilter = THREE.NearestFilter;
@@ -97,7 +97,7 @@ export default function ThreePreview() {
 
     rt.material.map = texture;
     rt.material.needsUpdate = true;
-  }, [project, lighting]);
+  }, [project, lighting, material]);
 
   return <div className="three-preview" ref={mountRef} aria-label="Three.js material and lighting preview" />;
 }

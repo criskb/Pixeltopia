@@ -75,7 +75,7 @@ function SelectionOverlay({ bounds, zoomLevel, wrapPreviewEnabled, width, height
 }
 
 
-function RigOverlay({ rigging, zoomLevel, width, height, wrapPreviewEnabled }) {
+function RigOverlay({ rigging, zoomLevel, width, height, wrapPreviewEnabled, metrics }) {
   if (!rigging?.enabled) {
     return null;
   }
@@ -83,7 +83,7 @@ function RigOverlay({ rigging, zoomLevel, width, height, wrapPreviewEnabled }) {
   const offset = { x: 0, y: 0 };
 
   return (
-    <div className="rig-overlay" aria-hidden="true">
+    <div className="rig-overlay" aria-hidden="true" style={{ left: metrics.left, top: metrics.top, width: metrics.width, height: metrics.height }}>
 
       {rigging.selectedBoneId && rigging.weights?.[rigging.selectedBoneId] && (
         <div className="rig-mask">
@@ -140,17 +140,19 @@ export default function CanvasViewport() {
     height,
     rigging,
     lighting,
+    material,
     workspaceMode
   } = useEditorState();
   const dispatch = useEditorDispatch();
   const [isDrawing, setIsDrawing] = useState(false);
+  const [overlayMetrics, setOverlayMetrics] = useState({ left: 0, top: 0, width: 0, height: 0 });
 
   const selectionBounds = useMemo(() => getSelectionBounds(selectionMask), [selectionMask]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    const renderBuffer = renderCanvasBuffer(project, lighting, rigging);
+    const renderBuffer = renderCanvasBuffer(project, lighting, rigging, material);
     const displayBuffer = wrapPreviewEnabled ? renderWrapPreviewBuffer(renderBuffer, wrapOffset) : renderBuffer;
 
     canvas.width = displayBuffer.width;
@@ -161,9 +163,22 @@ export default function CanvasViewport() {
 
     const imageData = new ImageData(displayBuffer.data, displayBuffer.width, displayBuffer.height);
     ctx.putImageData(imageData, 0, 0);
-  }, [project, lighting, zoomLevel, wrapPreviewEnabled, wrapOffset]);
+    setOverlayMetrics({
+      left: canvas.offsetLeft,
+      top: canvas.offsetTop,
+      width: canvas.clientWidth,
+      height: canvas.clientHeight
+    });
+  }, [project, lighting, rigging, material, zoomLevel, wrapPreviewEnabled, wrapOffset]);
 
   function applyPointerAction(event) {
+    if (workspaceMode === 'shader' && material.tool === 'emissive') {
+      const canvas = canvasRef.current;
+      const { x, y } = getCanvasPixel(event, canvas, zoomLevel, wrapPreviewEnabled, width, height);
+      dispatch({ type: 'material_paint', x, y, radius: 1 });
+      return;
+    }
+
     if (workspaceMode !== 'draw') {
       return;
     }
@@ -209,6 +224,11 @@ export default function CanvasViewport() {
         onPointerDown={(event) => {
           setIsDrawing(true);
           const { x, y } = getCanvasPixel(event, canvasRef.current, zoomLevel, wrapPreviewEnabled, width, height);
+          if (workspaceMode === 'shader' && material.tool === 'emissive') {
+            dispatch({ type: 'material_paint', x, y, radius: 1 });
+            return;
+          }
+
           if (workspaceMode === 'rigging') {
             if (!rigging.enabled) {
               dispatch({ type: 'rigging_toggle' });
@@ -235,6 +255,11 @@ export default function CanvasViewport() {
         }}
         onPointerMove={(event) => {
           const point = getCanvasPixel(event, canvasRef.current, zoomLevel, wrapPreviewEnabled, width, height);
+          if (workspaceMode === 'shader' && isDrawing && material.tool === 'emissive') {
+            dispatch({ type: 'material_paint', x: point.x, y: point.y, radius: 1 });
+            return;
+          }
+
           if (workspaceMode === 'rigging' && isDrawing) {
             if (rigging.tool === 'draw') {
               dispatch({ type: 'rigging_update_draw', end: { x: point.x, y: point.y } });
@@ -265,6 +290,11 @@ export default function CanvasViewport() {
           }
         }}
         onPointerUp={(event) => {
+          if (workspaceMode === 'shader' && material.tool === 'emissive') {
+            dispatch({ type: 'material_paint', x, y, radius: 1 });
+            return;
+          }
+
           if (workspaceMode === 'rigging') {
             if (rigging.tool === 'draw') {
               dispatch({ type: 'rigging_commit_draw', connect: true });
@@ -294,13 +324,13 @@ export default function CanvasViewport() {
           lastPointRef.current = null;
         }}
       />
-      <RigOverlay rigging={rigging} zoomLevel={zoomLevel} width={width} height={height} wrapPreviewEnabled={wrapPreviewEnabled} />
-      {rigging.draftBone && (
+      {workspaceMode === 'rigging' && (<RigOverlay rigging={rigging} zoomLevel={zoomLevel} width={width} height={height} wrapPreviewEnabled={wrapPreviewEnabled} metrics={overlayMetrics} />)}
+      {workspaceMode === 'rigging' && rigging.draftBone && (
         <div
           className="rig-draft"
           style={{
-            left: rigging.draftBone.start.x * zoomLevel,
-            top: rigging.draftBone.start.y * zoomLevel,
+            left: overlayMetrics.left + rigging.draftBone.start.x * zoomLevel,
+            top: overlayMetrics.top + rigging.draftBone.start.y * zoomLevel,
             width: Math.hypot((rigging.draftBone.end.x - rigging.draftBone.start.x) * zoomLevel, (rigging.draftBone.end.y - rigging.draftBone.start.y) * zoomLevel),
             transform: `rotate(${Math.atan2(rigging.draftBone.end.y - rigging.draftBone.start.y, rigging.draftBone.end.x - rigging.draftBone.start.x) * (180 / Math.PI)}deg)`
           }}

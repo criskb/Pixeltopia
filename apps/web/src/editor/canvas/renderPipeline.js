@@ -147,6 +147,32 @@ function compositeInto(base, overlay) {
   }
 }
 
+
+function applyMaterialChannels(buffer, material) {
+  if (!material?.emissiveMask) {
+    return buffer;
+  }
+
+  const out = {
+    width: buffer.width,
+    height: buffer.height,
+    data: new Uint8ClampedArray(buffer.data)
+  };
+
+  const strength = Math.max(0, Math.min(1, material.emissiveStrength ?? 0.6));
+  for (let i = 0; i < material.emissiveMask.length; i += 1) {
+    if (!material.emissiveMask[i]) {
+      continue;
+    }
+    const px = i * 4;
+    out.data[px] = Math.min(255, out.data[px] + 255 * strength * 0.35);
+    out.data[px + 1] = Math.min(255, out.data[px + 1] + 80 * strength);
+    out.data[px + 2] = Math.min(255, out.data[px + 2] + 255 * strength);
+  }
+
+  return out;
+}
+
 function applyLighting(buffer, lighting) {
   if (!lighting?.enabled) {
     return buffer;
@@ -206,7 +232,7 @@ export function compositeProjectFrame(project, frameId, opacity = 1, rigging = n
   return compositeFrame(riggedFrame, project.layers, project.width, project.height, opacity);
 }
 
-export function renderCanvasBuffer(project, lighting = null, rigging = null) {
+export function renderCanvasBuffer(project, lighting = null, rigging = null, material = null) {
   const finalBuffer = createPixelBuffer(project.width, project.height);
 
   if (project.onionSkin.enabled) {
@@ -222,7 +248,8 @@ export function renderCanvasBuffer(project, lighting = null, rigging = null) {
   }
 
   compositeInto(finalBuffer, compositeProjectFrame(project, project.selectedFrameId, 1, rigging));
-  return applyLighting(finalBuffer, lighting);
+  const materialBuffer = applyMaterialChannels(finalBuffer, material);
+  return applyLighting(materialBuffer, lighting);
 }
 
 export function renderWrapPreviewBuffer(buffer, offset = { x: 0, y: 0 }) {

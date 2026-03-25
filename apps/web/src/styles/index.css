@@ -411,6 +411,18 @@ button:focus-visible {
   background: #ff7ac3;
 }
 
+.preset-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.preset-row button {
+  justify-content: center;
+  font-size: 11px;
+  padding: 6px;
+}
+
 
 .rig-overlay {
   position: absolute;
@@ -467,12 +479,6 @@ button:focus-visible {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
-}
-
-.preset-row button {
-  justify-content: center;
-  font-size: 11px;
-  padding: 6px;
 }
 
 

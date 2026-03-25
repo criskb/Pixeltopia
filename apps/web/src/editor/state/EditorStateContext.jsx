@@ -131,6 +131,11 @@ export const initialState = {
     ambient: 0.35,
     color: '#ffd38a'
   },
+  material: {
+    tool: 'light',
+    emissiveMask: createEmptyMask(initialProject.width, initialProject.height),
+    emissiveStrength: 0.6
+  },
   history: {
     undoStack: [],
     redoStack: [],
@@ -369,7 +374,11 @@ function toAutosaveSnapshot(state) {
       wrapPreviewEnabled: state.wrapPreviewEnabled,
       wrapOffset: state.wrapOffset,
       rigging: state.rigging,
-      lighting: state.lighting
+      lighting: state.lighting,
+      material: {
+        ...state.material,
+        emissiveMask: Array.from(state.material.emissiveMask)
+      }
     }
   };
 }
@@ -378,6 +387,11 @@ function fromAutosaveSnapshot(snapshot) {
   return {
     ...initialState,
     ...snapshot.ui,
+    material: snapshot.ui?.material ? {
+      ...initialState.material,
+      ...snapshot.ui.material,
+      emissiveMask: new Uint8Array(snapshot.ui.material.emissiveMask ?? initialState.material.emissiveMask)
+    } : initialState.material,
     project: deserializeProject(snapshot.project),
     history: {
       ...initialState.history,
@@ -659,6 +673,16 @@ export function editorReducer(state, action) {
       return { ...state, lighting: { ...state.lighting, enabled: !state.lighting.enabled } };
     case 'lighting_set':
       return { ...state, lighting: { ...state.lighting, ...action.updates } };
+    case 'material_set_tool':
+      return { ...state, material: { ...state.material, tool: action.tool } };
+    case 'material_set_strength':
+      return { ...state, material: { ...state.material, emissiveStrength: action.value } };
+    case 'material_clear_emissive':
+      return { ...state, material: { ...state.material, emissiveMask: createEmptyMask(state.project.width, state.project.height) } };
+    case 'material_paint': {
+      const mask = paintMask(state.material.emissiveMask, state.project.width, state.project.height, action.x, action.y, action.radius ?? 1);
+      return { ...state, material: { ...state.material, emissiveMask: mask } };
+    }
     case 'frame_select':
       return { ...state, project: selectFrame(state.project, action.frameId) };
     case 'layer_toggle_visibility':

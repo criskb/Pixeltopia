@@ -18,11 +18,11 @@ const modeTools = {
     { key: 'weight', label: 'Skin Paint', shortcut: 'W', icon: PenSquare },
     { key: 'ik', label: 'IK Drag', shortcut: 'K', icon: Link2 }
   ],
-  shader: [{ key: 'light', label: 'Light', shortcut: 'L', icon: SunMedium }]
+  shader: [{ key: 'light', label: 'Light', shortcut: 'L', icon: SunMedium }, { key: 'emissive', label: 'Emissive', shortcut: 'E', icon: PenSquare }]
 };
 
 export default function ToolRail() {
-  const { activeTool, workspaceMode, rigging } = useEditorState();
+  const { activeTool, workspaceMode, rigging, material } = useEditorState();
   const dispatch = useEditorDispatch();
   const tools = workspaceMode === 'draw' ? drawTools : (modeTools[workspaceMode] ?? []);
 
@@ -31,7 +31,7 @@ export default function ToolRail() {
       <div className="rail-title">{workspaceMode === 'draw' ? 'Draw Tools' : `${workspaceMode} tools`}</div>
       {tools.map((tool) => {
         const Icon = tool.icon;
-        const isActive = workspaceMode === 'draw' ? tool.key === activeTool : workspaceMode === 'rigging' ? rigging.tool === tool.key : false;
+        const isActive = workspaceMode === 'draw' ? tool.key === activeTool : workspaceMode === 'rigging' ? rigging.tool === tool.key : workspaceMode === 'shader' ? material.tool === tool.key : false;
         return (
           <button
             key={tool.key}
@@ -43,6 +43,9 @@ export default function ToolRail() {
               }
               if (workspaceMode === 'rigging') {
                 dispatch({ type: 'rigging_set_tool', tool: tool.key });
+              }
+              if (workspaceMode === 'shader') {
+                dispatch({ type: 'material_set_tool', tool: tool.key });
               }
             }}
           >
