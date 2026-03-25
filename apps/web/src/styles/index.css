@@ -135,6 +135,12 @@ button:focus-visible {
 .tool-rail,
 .inspector,
 .workspace,
+
+.panel select,
+.panel input[type="number"],
+.panel input[type="range"] {
+  accent-color: var(--accent-secondary);
+}
 .timeline {
   background: var(--bg-panel);
   border: 1px solid var(--outline);
