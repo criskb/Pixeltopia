@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import { getSelectedCel } from '@pixelforge/domain';
 import { createPixelBuffer, setPixel, getPixel } from '../../canvas/pixelBuffer';
 import {
+  createWorkspacePolishPlan,
   editorReducer,
   initialState,
   loadAutosaveSnapshot,
@@ -64,5 +65,48 @@ describe('editor reliability layer', () => {
     const restored = editorReducer(state, { type: 'hydrate_from_snapshot', snapshot });
     const restoredCel = getSelectedCel(restored.project);
     expect(getPixel(restoredCel.pixelBuffer, 4, 5)).toEqual([12, 34, 56, 255]);
+  });
+
+  it('resets editor state while preserving custom undo budget', () => {
+    let state = freshState();
+    state = editorReducer(state, { type: 'history_set_budget', budgetBytes: 3 * 1024 * 1024 });
+
+    const drawBuffer = createPixelBuffer(state.project.width, state.project.height);
+    setPixel(drawBuffer, 1, 1, [10, 20, 30, 255]);
+    state = editorReducer(state, { type: 'update_pixels', pixelBuffer: drawBuffer });
+
+    const reset = editorReducer(state, { type: 'project_reset' });
+    const resetCel = getSelectedCel(reset.project);
+
+    expect(reset.history.budgetBytes).toBe(3 * 1024 * 1024);
+    expect(reset.history.undoStack).toHaveLength(0);
+    expect(getPixel(resetCel.pixelBuffer, 1, 1)).toEqual([0, 0, 0, 0]);
+  });
+
+  it('builds mode-aware polish plans', () => {
+    const drawPlan = createWorkspacePolishPlan({
+      ...initialState,
+      workspaceMode: 'draw',
+      wrapPreviewEnabled: false,
+      zoomLevel: 8
+    });
+    expect(drawPlan.actions).toEqual([
+      { type: 'wrap_preview_toggle' },
+      { type: 'set_zoom', zoom: 12 }
+    ]);
+
+    const animatePlan = createWorkspacePolishPlan({
+      ...initialState,
+      workspaceMode: 'animate',
+      project: {
+        ...initialState.project,
+        onionSkin: { ...initialState.project.onionSkin, enabled: false },
+        playback: { ...initialState.project.playback, fps: 10 }
+      }
+    });
+    expect(animatePlan.actions).toEqual([
+      { type: 'onion_toggle' },
+      { type: 'playback_set_fps', fps: 12 }
+    ]);
   });
 });
