@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { applyTool } from './tools';
 import { cloneBuffer } from './pixelBuffer';
+import { renderCanvasBuffer } from './renderPipeline';
 import { useEditorDispatch, useEditorState } from '../state/EditorStateContext';
 
 function getCanvasPixel(event, canvas, zoomLevel) {
@@ -12,24 +13,30 @@ function getCanvasPixel(event, canvas, zoomLevel) {
 
 export default function CanvasViewport() {
   const canvasRef = useRef(null);
-  const { pixelBuffer, zoomLevel, activeTool, currentColor, brushSize } = useEditorState();
+  const { project, pixelBuffer, zoomLevel, activeTool, currentColor, brushSize, selectedLayerId } = useEditorState();
   const dispatch = useEditorDispatch();
   const [isDrawing, setIsDrawing] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    canvas.width = pixelBuffer.width;
-    canvas.height = pixelBuffer.height;
-    canvas.style.width = `${pixelBuffer.width * zoomLevel}px`;
-    canvas.style.height = `${pixelBuffer.height * zoomLevel}px`;
+    const renderBuffer = renderCanvasBuffer(project);
+    canvas.width = renderBuffer.width;
+    canvas.height = renderBuffer.height;
+    canvas.style.width = `${renderBuffer.width * zoomLevel}px`;
+    canvas.style.height = `${renderBuffer.height * zoomLevel}px`;
     ctx.imageSmoothingEnabled = false;
 
-    const imageData = new ImageData(pixelBuffer.data, pixelBuffer.width, pixelBuffer.height);
+    const imageData = new ImageData(renderBuffer.data, renderBuffer.width, renderBuffer.height);
     ctx.putImageData(imageData, 0, 0);
-  }, [pixelBuffer, zoomLevel]);
+  }, [project, zoomLevel]);
 
   function applyPointerAction(event) {
+    const activeLayer = project.layers.find((layer) => layer.id === selectedLayerId);
+    if (activeLayer?.locked) {
+      return;
+    }
+
     const canvas = canvasRef.current;
     const { x, y } = getCanvasPixel(event, canvas, zoomLevel);
     dispatch({ type: 'set_cursor', cursor: { x, y } });

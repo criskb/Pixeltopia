@@ -10,13 +10,6 @@ const tools = [
 
 const swatches = ['#1D1D1D', '#FFFFFF', '#7C5CFF', '#00C2FF', '#37D67A', '#FFB020', '#FF5D73', '#8B5CF6'];
 
-const layers = [
-  { id: 'fx', name: 'FX', visible: true },
-  { id: 'line', name: 'Line Art', visible: true },
-  { id: 'base', name: 'Base Colors', visible: true },
-  { id: 'bg', name: 'Background', visible: false }
-];
-
 function ToolRail() {
   const { activeTool } = useEditorState();
   const dispatch = useEditorDispatch();
@@ -39,7 +32,7 @@ function ToolRail() {
 }
 
 function Inspector() {
-  const { currentColor, brushSize, zoomLevel } = useEditorState();
+  const { currentColor, brushSize, zoomLevel, layers, selectedLayerId, onionSkin } = useEditorState();
   const dispatch = useEditorDispatch();
 
   return (
@@ -63,10 +56,11 @@ function Inspector() {
       <section className="panel">
         <h2>Layers</h2>
         <ul className="layer-list">
-          {layers.map((layer, index) => (
-            <li key={layer.id} className={index === 1 ? 'layer-row selected' : 'layer-row'}>
-              <span>{layer.visible ? '👁' : '🚫'}</span>
-              <span>{layer.name}</span>
+          {layers.map((layer) => (
+            <li key={layer.id} className={layer.id === selectedLayerId ? 'layer-row selected' : 'layer-row'}>
+              <button onClick={() => dispatch({ type: 'layer_toggle_visibility', layerId: layer.id })}>{layer.visible ? '👁' : '🚫'}</button>
+              <button onClick={() => dispatch({ type: 'layer_toggle_lock', layerId: layer.id })}>{layer.locked ? '🔒' : '🔓'}</button>
+              <button onClick={() => dispatch({ type: 'layer_select', layerId: layer.id })}>{layer.name}</button>
             </li>
           ))}
         </ul>
@@ -90,20 +84,46 @@ function Inspector() {
           <strong>{zoomLevel * 100}%</strong>
         </div>
       </section>
+
+      <section className="panel">
+        <h2>Onion Skin</h2>
+        <button onClick={() => dispatch({ type: 'onion_toggle' })}>{onionSkin.enabled ? 'Disable' : 'Enable'}</button>
+      </section>
     </aside>
   );
 }
 
 function Timeline() {
+  const { frames, selectedFrameId, playback } = useEditorState();
+  const dispatch = useEditorDispatch();
+
   return (
     <footer className="timeline" aria-label="Timeline">
       <div className="timeline-header">
         <span className="timeline-title">Walk Cycle</span>
-        <span className="timeline-meta">12 fps · loop</span>
+        <span className="timeline-meta">{playback.fps} fps · {playback.loopMode}</span>
       </div>
+
+      <div className="timeline-header">
+        <button onClick={() => dispatch({ type: 'frame_create' })}>+ Frame</button>
+        <button onClick={() => dispatch({ type: 'frame_duplicate' })}>Duplicate</button>
+        <button onClick={() => dispatch({ type: 'frame_delete' })}>Delete</button>
+        <button onClick={() => dispatch({ type: 'playback_toggle' })}>{playback.isPlaying ? 'Pause' : 'Play'}</button>
+        <button onClick={() => dispatch({ type: 'playback_advance', step: -1 })}>{'<'}</button>
+        <button onClick={() => dispatch({ type: 'playback_advance', step: 1 })}>{'>'}</button>
+        <label>
+          FPS
+          <input type="number" min="1" max="60" value={playback.fps} onChange={(e) => dispatch({ type: 'playback_set_fps', fps: Number(e.target.value) })} />
+        </label>
+        <select value={playback.loopMode} onChange={(e) => dispatch({ type: 'playback_set_loop_mode', loopMode: e.target.value })}>
+          <option value="loop">Loop</option>
+          <option value="once">Once</option>
+        </select>
+      </div>
+
       <div className="timeline-frames">
-        {Array.from({ length: 12 }, (_, index) => (
-          <button key={index} className={index === 3 ? 'frame active' : 'frame'}>
+        {frames.map((frame, index) => (
+          <button key={frame.id} className={frame.id === selectedFrameId ? 'frame active' : 'frame'} onClick={() => dispatch({ type: 'frame_select', frameId: frame.id })}>
             {index + 1}
           </button>
         ))}
