@@ -304,3 +304,23 @@ button:focus-visible {
 #brushSize {
   width: 110px;
 }
+
+.canvas-stage {
+  position: relative;
+}
+
+.selection-box {
+  position: absolute;
+  border: 1px dashed rgba(0, 194, 255, 0.9);
+  pointer-events: none;
+}
+
+.selection-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  margin-top: -4px;
+  border: 1px solid #00121b;
+  background: #00c2ff;
+}

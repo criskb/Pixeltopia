@@ -94,3 +94,24 @@ export function renderCanvasBuffer(project) {
   compositeInto(finalBuffer, compositeProjectFrame(project, project.selectedFrameId, 1));
   return finalBuffer;
 }
+
+export function renderWrapPreviewBuffer(buffer, offset = { x: 0, y: 0 }) {
+  const result = createPixelBuffer(buffer.width * 3, buffer.height * 3);
+  const offsetX = ((offset.x % buffer.width) + buffer.width) % buffer.width;
+  const offsetY = ((offset.y % buffer.height) + buffer.height) % buffer.height;
+
+  for (let y = 0; y < result.height; y += 1) {
+    for (let x = 0; x < result.width; x += 1) {
+      const srcX = ((x - offsetX) % buffer.width + buffer.width) % buffer.width;
+      const srcY = ((y - offsetY) % buffer.height + buffer.height) % buffer.height;
+      const dstIndex = (y * result.width + x) * 4;
+      const srcIndex = (srcY * buffer.width + srcX) * 4;
+      result.data[dstIndex] = buffer.data[srcIndex];
+      result.data[dstIndex + 1] = buffer.data[srcIndex + 1];
+      result.data[dstIndex + 2] = buffer.data[srcIndex + 2];
+      result.data[dstIndex + 3] = buffer.data[srcIndex + 3];
+    }
+  }
+
+  return result;
+}
