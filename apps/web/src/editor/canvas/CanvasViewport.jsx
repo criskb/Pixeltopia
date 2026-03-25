@@ -119,6 +119,107 @@ function RigOverlay({ rigging, zoomLevel, width, height, wrapPreviewEnabled, met
   );
 }
 
+function ShaderViewportControls({ lighting, material, zoomLevel, overlayMetrics, dispatch }) {
+  const fileInputRef = useRef(null);
+
+  const lightHandle = useMemo(() => {
+    const safePos = lighting.position ?? { x: 0, y: 0 };
+    return {
+      left: safePos.x * zoomLevel,
+      top: safePos.y * zoomLevel
+    };
+  }, [lighting.position, zoomLevel]);
+
+  const loadHdri = async (file) => {
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ''));
+        reader.onerror = () => reject(new Error('Failed to read HDRI file'));
+        reader.readAsDataURL(file);
+      });
+
+      const image = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Failed to decode HDRI image'));
+        img.src = dataUrl;
+      });
+
+      const sampleCanvas = document.createElement('canvas');
+      sampleCanvas.width = 64;
+      sampleCanvas.height = 1;
+      const ctx = sampleCanvas.getContext('2d');
+      if (!ctx) {
+        return;
+      }
+      ctx.drawImage(image, 0, 0, sampleCanvas.width, sampleCanvas.height);
+      const row = ctx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height).data;
+      const hdriSamples = Array.from({ length: sampleCanvas.width }, (_, index) => {
+        const pixel = index * 4;
+        return [row[pixel], row[pixel + 1], row[pixel + 2]];
+      });
+
+      dispatch({
+        type: 'lighting_set',
+        updates: {
+          hdriName: file.name,
+          hdriDataUrl: dataUrl,
+          hdriSamples
+        }
+      });
+    } catch {
+      // Ignore invalid files and keep current lighting settings.
+    }
+  };
+
+  return (
+    <div className="shader-overlay" style={{ left: overlayMetrics.left, top: overlayMetrics.top, width: overlayMetrics.width, height: overlayMetrics.height }}>
+      {lighting.enabled && (
+        <div className="light-handle" style={{ left: lightHandle.left, top: lightHandle.top }} title="Drag to move local light source" aria-hidden="true" />
+      )}
+      <div className="shader-overlay-panel">
+        <div className="control-row">
+          <span>Lighting</span>
+          <button onClick={() => dispatch({ type: 'lighting_toggle' })}>{lighting.enabled ? 'On' : 'Off'}</button>
+        </div>
+        <div className="control-row">
+          <span>Mode</span>
+          <div className="segmented">
+            <button className={lighting.mode === 'point' ? 'active' : ''} onClick={() => dispatch({ type: 'lighting_set', updates: { mode: 'point' } })}>Point</button>
+            <button className={lighting.mode === 'global' ? 'active' : ''} onClick={() => dispatch({ type: 'lighting_set', updates: { mode: 'global' } })}>Global</button>
+          </div>
+        </div>
+        {lighting.mode === 'global' && (
+          <label className="control-row"><span>Direction</span><input type="range" min="0" max="360" value={lighting.direction} onChange={(e) => dispatch({ type: 'lighting_set', updates: { direction: Number(e.target.value) } })} /></label>
+        )}
+        <label className="control-row"><span>Intensity</span><input type="range" min="0" max="1" step="0.01" value={lighting.intensity} onChange={(e) => dispatch({ type: 'lighting_set', updates: { intensity: Number(e.target.value) } })} /></label>
+        <label className="control-row"><span>Ambient</span><input type="range" min="0" max="1" step="0.01" value={lighting.ambient} onChange={(e) => dispatch({ type: 'lighting_set', updates: { ambient: Number(e.target.value) } })} /></label>
+        <label className="control-row"><span>Tint</span><input type="color" value={lighting.color} onChange={(e) => dispatch({ type: 'lighting_set', updates: { color: e.target.value } })} /></label>
+        <label className="control-row"><span>HDRI Mix</span><input type="range" min="0" max="1" step="0.01" value={lighting.hdriStrength ?? 0.6} onChange={(e) => dispatch({ type: 'lighting_set', updates: { hdriStrength: Number(e.target.value) } })} /></label>
+        <div className="layer-actions">
+          <button onClick={() => fileInputRef.current?.click()}>Load HDRI</button>
+          <button onClick={() => dispatch({ type: 'lighting_set', updates: { hdriName: '', hdriDataUrl: '', hdriSamples: null } })} disabled={!lighting.hdriSamples}>Clear HDRI</button>
+        </div>
+        <p className="subhead">Active material tool: {material.tool}. {lighting.hdriName ? `HDRI: ${lighting.hdriName}` : 'No HDRI loaded.'}</p>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(event) => {
+            const [file] = event.target.files ?? [];
+            if (file) {
+              loadHdri(file);
+            }
+            event.target.value = '';
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function CanvasViewport() {
   const canvasRef = useRef(null);
   const lassoRef = useRef([]);
@@ -145,13 +246,20 @@ export default function CanvasViewport() {
   } = useEditorState();
   const dispatch = useEditorDispatch();
   const [isDrawing, setIsDrawing] = useState(false);
+  const [isLightDragging, setIsLightDragging] = useState(false);
   const [overlayMetrics, setOverlayMetrics] = useState({ left: 0, top: 0, width: 0, height: 0 });
 
   const selectionBounds = useMemo(() => getSelectionBounds(selectionMask), [selectionMask]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
     const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return;
+    }
     const renderBuffer = renderCanvasBuffer(project, lighting, rigging, material);
     const displayBuffer = wrapPreviewEnabled ? renderWrapPreviewBuffer(renderBuffer, wrapOffset) : renderBuffer;
 
@@ -224,6 +332,18 @@ export default function CanvasViewport() {
         onPointerDown={(event) => {
           setIsDrawing(true);
           const { x, y } = getCanvasPixel(event, canvasRef.current, zoomLevel, wrapPreviewEnabled, width, height);
+          if (workspaceMode === 'shader' && material.tool === 'light') {
+            setIsLightDragging(true);
+            dispatch({
+              type: 'lighting_set',
+              updates: {
+                enabled: true,
+                position: { x, y },
+                direction: (Math.atan2((height / 2) - y, (width / 2) - x) * 180) / Math.PI
+              }
+            });
+            return;
+          }
           if (workspaceMode === 'shader' && material.tool !== 'light') {
             dispatch({ type: material.tool.endsWith('-erase') ? 'material_erase' : 'material_paint', x, y, radius: 1 });
             return;
@@ -255,6 +375,23 @@ export default function CanvasViewport() {
         }}
         onPointerMove={(event) => {
           const point = getCanvasPixel(event, canvasRef.current, zoomLevel, wrapPreviewEnabled, width, height);
+          if (workspaceMode === 'shader' && isLightDragging && material.tool === 'light') {
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const dx = point.x - centerX;
+            const dy = point.y - centerY;
+            const maxDist = Math.max(1, Math.hypot(width, height) / 2);
+            dispatch({
+              type: 'lighting_set',
+              updates: {
+                enabled: true,
+                position: { x: point.x, y: point.y },
+                direction: (Math.atan2(dy, dx) * 180) / Math.PI,
+                intensity: Math.max(0.1, Math.min(1, Math.hypot(dx, dy) / maxDist))
+              }
+            });
+            return;
+          }
           if (workspaceMode === 'shader' && isDrawing && material.tool !== 'light') {
             dispatch({ type: material.tool.endsWith('-erase') ? 'material_erase' : 'material_paint', x: point.x, y: point.y, radius: 1 });
             return;
@@ -290,8 +427,16 @@ export default function CanvasViewport() {
           }
         }}
         onPointerUp={(event) => {
+          const point = getCanvasPixel(event, canvasRef.current, zoomLevel, wrapPreviewEnabled, width, height);
+          if (workspaceMode === 'shader' && material.tool === 'light') {
+            dispatch({ type: 'lighting_set', updates: { enabled: true, position: { x: point.x, y: point.y } } });
+            setIsDrawing(false);
+            setIsLightDragging(false);
+            return;
+          }
           if (workspaceMode === 'shader' && material.tool !== 'light') {
-            dispatch({ type: material.tool.endsWith('-erase') ? 'material_erase' : 'material_paint', x, y, radius: 1 });
+            dispatch({ type: material.tool.endsWith('-erase') ? 'material_erase' : 'material_paint', x: point.x, y: point.y, radius: 1 });
+            setIsDrawing(false);
             return;
           }
 
@@ -318,6 +463,7 @@ export default function CanvasViewport() {
         }}
         onPointerLeave={() => {
           setIsDrawing(false);
+          setIsLightDragging(false);
           rectStartRef.current = null;
           lassoRef.current = [];
           dragBoneRef.current = null;
@@ -325,6 +471,9 @@ export default function CanvasViewport() {
         }}
       />
       {workspaceMode === 'rigging' && (<RigOverlay rigging={rigging} zoomLevel={zoomLevel} width={width} height={height} wrapPreviewEnabled={wrapPreviewEnabled} metrics={overlayMetrics} />)}
+      {workspaceMode === 'shader' && (
+        <ShaderViewportControls lighting={lighting} material={material} zoomLevel={zoomLevel} overlayMetrics={overlayMetrics} dispatch={dispatch} />
+      )}
       {workspaceMode === 'rigging' && rigging.draftBone && (
         <div
           className="rig-draft"

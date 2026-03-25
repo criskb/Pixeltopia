@@ -62,6 +62,7 @@ export default function ThreePreview() {
       if (runtimeRef.current?.animationId) {
         cancelAnimationFrame(runtimeRef.current.animationId);
       }
+      runtimeRef.current?.environmentTexture?.dispose();
       geometry.dispose();
       material.map?.dispose();
       material.dispose();
@@ -78,10 +79,33 @@ export default function ThreePreview() {
     }
 
     const angle = (lighting.direction ?? 45) * (Math.PI / 180);
-    rt.directional.position.set(Math.cos(angle), Math.sin(angle), 1.1);
+    if ((lighting.mode ?? 'point') === 'global') {
+      rt.directional.position.set(Math.cos(angle), Math.sin(angle), 1.1);
+    } else {
+      const lightPos = lighting.position ?? { x: project.width * 0.75, y: project.height * 0.25 };
+      const nx = (lightPos.x / Math.max(1, project.width)) * 2 - 1;
+      const ny = -((lightPos.y / Math.max(1, project.height)) * 2 - 1);
+      rt.directional.position.set(nx, ny, 1.1);
+    }
     rt.directional.color = new THREE.Color(lighting.color ?? '#ffd38a');
     rt.directional.intensity = Math.max(0.05, lighting.enabled ? lighting.intensity ?? 0.7 : 0.05);
     rt.ambient.intensity = lighting.enabled ? lighting.ambient ?? 0.35 : 0.35;
+    rt.material.envMapIntensity = lighting.hdriDataUrl ? (lighting.hdriStrength ?? 0.6) : 0;
+
+    if (rt.environmentTexture) {
+      rt.environmentTexture.dispose();
+      rt.environmentTexture = null;
+      rt.scene.environment = null;
+    }
+    if (lighting.hdriDataUrl) {
+      const loader = new THREE.TextureLoader();
+      loader.load(lighting.hdriDataUrl, (texture) => {
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+        texture.colorSpace = THREE.SRGBColorSpace;
+        rt.environmentTexture = texture;
+        rt.scene.environment = texture;
+      });
+    }
 
     const composite = renderCanvasBuffer(project, null, null, material);
     const data = new Uint8Array(composite.data);
@@ -125,6 +149,7 @@ export default function ThreePreview() {
 
     rt.material.roughnessMap = buildGrayTexture(material.roughnessMask, material.roughnessStrength ?? 0.6);
     rt.material.metalnessMap = buildGrayTexture(material.metalnessMask, material.metalnessStrength ?? 0.35);
+    rt.material.needsUpdate = true;
   }, [project, lighting, material]);
 
   return <div className="three-preview" ref={mountRef} aria-label="Three.js material and lighting preview" />;

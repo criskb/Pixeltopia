@@ -141,10 +141,15 @@ export const initialState = {
   },
   lighting: {
     enabled: false,
+    mode: 'point',
     direction: 40,
     intensity: 0.7,
     ambient: 0.35,
-    color: '#ffd38a'
+    color: '#ffd38a',
+    position: { x: Math.round(initialProject.width * 0.75), y: Math.round(initialProject.height * 0.25) },
+    hdriStrength: 0.6,
+    hdriSamples: null,
+    hdriName: ''
   },
   material: {
     tool: 'light',

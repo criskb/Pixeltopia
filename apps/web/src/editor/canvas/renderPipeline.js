@@ -203,6 +203,10 @@ function applyLighting(buffer, lighting) {
   const lightVector = { x: Math.cos(radians), y: Math.sin(radians) };
   const intensity = Math.max(0, Math.min(1, lighting.intensity ?? 0.7));
   const ambient = Math.max(0, Math.min(1, lighting.ambient ?? 0.3));
+  const mode = lighting.mode ?? 'point';
+  const lightPosition = lighting.position ?? { x: Math.round(lit.width * 0.75), y: Math.round(lit.height * 0.25) };
+  const hdriSamples = Array.isArray(lighting.hdriSamples) ? lighting.hdriSamples : null;
+  const hdriStrength = Math.max(0, Math.min(1, lighting.hdriStrength ?? 0.6));
   const lightTint = lighting.color ?? '#ffd38a';
   const tint = [
     Number.parseInt(lightTint.slice(1, 3), 16),
@@ -225,12 +229,41 @@ function applyLighting(buffer, lighting) {
 
       const normalX = rightA - leftA;
       const normalY = downA - upA;
-      const shade = Math.max(0, (normalX * lightVector.x + normalY * lightVector.y + 1) / 2);
+      let shade = 0;
+      if (mode === 'global') {
+        shade = Math.max(0, (normalX * lightVector.x + normalY * lightVector.y + 1) / 2);
+      } else {
+        const toLightX = lightPosition.x - x;
+        const toLightY = lightPosition.y - y;
+        const dist = Math.hypot(toLightX, toLightY);
+        const invDist = 1 / Math.max(1, dist);
+        const lx = toLightX * invDist;
+        const ly = toLightY * invDist;
+        const nLen = Math.max(0.0001, Math.hypot(normalX, normalY));
+        const nx = normalX / nLen;
+        const ny = normalY / nLen;
+        const diffuse = Math.max(0, (nx * lx + ny * ly + 1) / 2);
+        const attenuation = 1 - Math.min(1, dist / Math.max(lit.width, lit.height));
+        shade = diffuse * (0.35 + attenuation * 0.65);
+      }
       const energy = ambient + intensity * shade;
+      let envTint = tint;
+      if (hdriSamples?.length) {
+        const refX = mode === 'global' ? lightVector.x : (lightPosition.x - x);
+        const refY = mode === 'global' ? lightVector.y : (lightPosition.y - y);
+        const envAngle = (Math.atan2(normalY + refY, normalX + refX) + Math.PI) / (Math.PI * 2);
+        const sampleIndex = Math.floor(envAngle * hdriSamples.length) % hdriSamples.length;
+        envTint = hdriSamples[sampleIndex] ?? tint;
+      }
+      const mixedTint = [
+        tint[0] * (1 - hdriStrength) + envTint[0] * hdriStrength,
+        tint[1] * (1 - hdriStrength) + envTint[1] * hdriStrength,
+        tint[2] * (1 - hdriStrength) + envTint[2] * hdriStrength
+      ];
 
-      lit.data[i] = Math.min(255, lit.data[i] * energy + tint[0] * 0.18 * intensity);
-      lit.data[i + 1] = Math.min(255, lit.data[i + 1] * energy + tint[1] * 0.18 * intensity);
-      lit.data[i + 2] = Math.min(255, lit.data[i + 2] * energy + tint[2] * 0.18 * intensity);
+      lit.data[i] = Math.min(255, lit.data[i] * energy + mixedTint[0] * 0.18 * intensity);
+      lit.data[i + 1] = Math.min(255, lit.data[i + 1] * energy + mixedTint[1] * 0.18 * intensity);
+      lit.data[i + 2] = Math.min(255, lit.data[i + 2] * energy + mixedTint[2] * 0.18 * intensity);
     }
   }
 
