@@ -311,24 +311,26 @@ button:focus-visible {
 
 .wheel-layout {
   display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: 10px;
+  grid-template-columns: 148px 1fr;
+  gap: 12px;
   align-items: center;
 }
 
 .hue-wheel {
-  width: 120px;
-  height: 120px;
+  width: 148px;
+  height: 148px;
   border-radius: 50%;
   background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);
   position: relative;
   border: 1px solid var(--outline);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), 0 8px 18px rgba(0,0,0,0.35);
+  cursor: crosshair;
 }
 
 .hue-wheel::after {
   content: '';
   position: absolute;
-  inset: 22px;
+  inset: 30px;
   border-radius: 50%;
   background: var(--bg-panel);
 }
@@ -346,16 +348,19 @@ button:focus-visible {
   border: 1px solid #111;
   transform-origin: 0 0;
   z-index: 2;
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.35);
 }
 
 .sv-box {
-  height: 120px;
+  height: 148px;
   border-radius: 8px;
   border: 1px solid var(--outline);
   position: relative;
   background:
     linear-gradient(to top, black, transparent),
     linear-gradient(to right, white, hsl(var(--hue) 100% 50%));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1), 0 8px 18px rgba(0,0,0,0.25);
+  cursor: crosshair;
 }
 
 .sv-indicator {
