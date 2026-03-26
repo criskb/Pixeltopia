@@ -25,7 +25,9 @@ const modeTools = {
     { key: 'roughness', label: 'Roughness+', shortcut: 'Q', icon: PenSquare },
     { key: 'roughness-erase', label: 'Roughness-', shortcut: 'W', icon: Eraser },
     { key: 'metalness', label: 'Metalness+', shortcut: 'A', icon: PenSquare },
-    { key: 'metalness-erase', label: 'Metalness-', shortcut: 'S', icon: Eraser }
+    { key: 'metalness-erase', label: 'Metalness-', shortcut: 'S', icon: Eraser },
+    { key: 'height', label: 'Height+', shortcut: 'D', icon: PenSquare },
+    { key: 'height-erase', label: 'Height-', shortcut: 'F', icon: Eraser }
   ]
 };
 
