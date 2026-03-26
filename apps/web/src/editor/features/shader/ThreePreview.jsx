@@ -3,6 +3,12 @@ import * as THREE from 'three';
 import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import { useEditorState } from '../../state/EditorStateContext';
 import { renderCanvasBuffer } from '../../canvas/renderPipeline';
+import {
+  buildDepthTextureData,
+  buildGrayscaleTextureData,
+  buildHeightTextureData,
+  buildNormalTextureData
+} from './materialMaps';
 
 export default function ThreePreview() {
   const mountRef = useRef(null);
@@ -33,8 +39,8 @@ export default function ThreePreview() {
     directional.position.set(1, 1, 1);
     scene.add(directional);
 
-    const geometry = new THREE.PlaneGeometry(1.6, 1.6);
-    const material = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.55, metalness: 0.05 });
+    const geometry = new THREE.PlaneGeometry(1.6, 1.6, 96, 96);
+    const material = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, metalness: 1 });
     const mesh = new THREE.Mesh(geometry, material);
     scene.add(mesh);
 
@@ -66,6 +72,10 @@ export default function ThreePreview() {
       runtimeRef.current?.environmentTexture?.dispose();
       geometry.dispose();
       material.map?.dispose();
+      material.roughnessMap?.dispose();
+      material.metalnessMap?.dispose();
+      material.normalMap?.dispose();
+      material.displacementMap?.dispose();
       material.dispose();
       renderer.dispose();
       container.removeChild(renderer.domElement);
@@ -125,22 +135,34 @@ export default function ThreePreview() {
     rt.material.map = texture;
     rt.material.needsUpdate = true;
 
-    const buildGrayTexture = (mask, strength) => {
-      const gray = new Uint8Array(composite.width * composite.height * 4);
-      for (let i = 0; i < composite.width * composite.height; i += 1) {
-        const value = mask?.[i] ? Math.round(255 * strength) : 0;
-        const p = i * 4;
-        gray[p] = value;
-        gray[p + 1] = value;
-        gray[p + 2] = value;
-        gray[p + 3] = 255;
-      }
-      const tex = new THREE.DataTexture(gray, composite.width, composite.height, THREE.RGBAFormat);
+    const makeTexture = (sourceData, colorSpace = THREE.NoColorSpace) => {
+      const tex = new THREE.DataTexture(sourceData, composite.width, composite.height, THREE.RGBAFormat);
       tex.magFilter = THREE.NearestFilter;
       tex.minFilter = THREE.NearestFilter;
-      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.colorSpace = colorSpace;
       tex.needsUpdate = true;
       return tex;
+    };
+
+    const buildGrayTexture = (mask, strength = 1) => {
+      const gray = buildGrayscaleTextureData(mask, composite.width, composite.height, strength);
+      return makeTexture(gray, THREE.NoColorSpace);
+    };
+
+    const heightData = buildHeightTextureData(composite, material.heightMask, material.heightStrength ?? 0.35);
+    const normalData = buildNormalTextureData(heightData, composite.width, composite.height, Math.max(0, material.normalStrength ?? 0.8));
+    const depthData = buildDepthTextureData(heightData);
+
+    const buildHeightTexture = () => {
+      return { tex: makeTexture(heightData, THREE.NoColorSpace), heightData };
+    };
+
+    const buildNormalTexture = () => {
+      return makeTexture(normalData, THREE.NoColorSpace);
+    };
+
+    const buildDepthTexture = () => {
+      return makeTexture(depthData, THREE.NoColorSpace);
     };
 
     if (rt.material.roughnessMap) {
@@ -149,9 +171,61 @@ export default function ThreePreview() {
     if (rt.material.metalnessMap) {
       rt.material.metalnessMap.dispose();
     }
+    if (rt.material.normalMap) {
+      rt.material.normalMap.dispose();
+    }
+    if (rt.material.displacementMap) {
+      rt.material.displacementMap.dispose();
+    }
 
-    rt.material.roughnessMap = buildGrayTexture(material.roughnessMask, material.roughnessStrength ?? 0.6);
-    rt.material.metalnessMap = buildGrayTexture(material.metalnessMask, material.metalnessStrength ?? 0.35);
+    const roughnessTexture = buildGrayTexture(material.roughnessMask, material.roughnessStrength ?? 0.6);
+    const metalnessTexture = buildGrayTexture(material.metalnessMask, material.metalnessStrength ?? 0.35);
+    const { tex: heightTexture } = buildHeightTexture();
+    const normalTexture = buildNormalTexture();
+
+    rt.material.roughnessMap = roughnessTexture;
+    rt.material.metalnessMap = metalnessTexture;
+    rt.material.displacementMap = heightTexture;
+    rt.material.displacementScale = Math.max(0, material.heightStrength ?? 0.35) * 0.25;
+    rt.material.normalMap = normalTexture;
+    rt.material.roughness = 1;
+    rt.material.metalness = 1;
+    rt.material.envMapIntensity = lighting.hdriDataUrl ? (lighting.hdriStrength ?? 0.6) : 0;
+
+    if ((material.previewMode ?? 'lit') !== 'lit') {
+      if (rt.material.map) {
+        rt.material.map.dispose();
+      }
+      switch (material.previewMode) {
+        case 'roughness':
+          rt.material.map = buildGrayTexture(material.roughnessMask, material.roughnessStrength ?? 0.6);
+          break;
+        case 'metalness':
+          rt.material.map = buildGrayTexture(material.metalnessMask, material.metalnessStrength ?? 0.35);
+          break;
+        case 'height':
+          rt.material.map = makeTexture(heightData, THREE.NoColorSpace);
+          break;
+        case 'normal':
+          rt.material.map = makeTexture(normalData, THREE.NoColorSpace);
+          break;
+        case 'depth':
+          rt.material.map = buildDepthTexture();
+          break;
+        default:
+          rt.material.map = texture;
+      }
+      rt.material.normalMap = null;
+      rt.material.displacementMap = null;
+      rt.material.displacementScale = 0;
+      rt.material.roughness = 1;
+      rt.material.metalness = 0;
+      rt.material.envMapIntensity = 0;
+      rt.scene.environment = null;
+    } else {
+      rt.material.map = texture;
+    }
+
     rt.material.needsUpdate = true;
   }, [project, lighting, material]);
 
