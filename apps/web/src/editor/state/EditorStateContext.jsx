@@ -173,6 +173,89 @@ function createChannelMaskFromSelectedCel(project, { gain = 1, invert = false } 
   }
   return mask;
 }
+
+function adjustMask(mask, operation) {
+  if (!(mask instanceof Uint8Array)) {
+    return mask;
+  }
+  if (operation === 'invert') {
+    const out = new Uint8Array(mask.length);
+    for (let i = 0; i < mask.length; i += 1) {
+      out[i] = 255 - mask[i];
+    }
+    return out;
+  }
+
+  if (operation === 'normalize') {
+    let min = 255;
+    let max = 0;
+    for (let i = 0; i < mask.length; i += 1) {
+      min = Math.min(min, mask[i]);
+      max = Math.max(max, mask[i]);
+    }
+    if (max <= min) {
+      return new Uint8Array(mask);
+    }
+    const out = new Uint8Array(mask.length);
+    const span = max - min;
+    for (let i = 0; i < mask.length; i += 1) {
+      out[i] = Math.round(((mask[i] - min) / span) * 255);
+    }
+    return out;
+  }
+
+  return new Uint8Array(mask);
+}
+
+function resizePixelBufferNearest(buffer, nextWidth, nextHeight) {
+  const out = {
+    width: nextWidth,
+    height: nextHeight,
+    data: new Uint8ClampedArray(nextWidth * nextHeight * 4)
+  };
+  for (let y = 0; y < nextHeight; y += 1) {
+    for (let x = 0; x < nextWidth; x += 1) {
+      const srcX = Math.min(buffer.width - 1, Math.floor((x / Math.max(1, nextWidth)) * buffer.width));
+      const srcY = Math.min(buffer.height - 1, Math.floor((y / Math.max(1, nextHeight)) * buffer.height));
+      const src = (srcY * buffer.width + srcX) * 4;
+      const dst = (y * nextWidth + x) * 4;
+      out.data[dst] = buffer.data[src];
+      out.data[dst + 1] = buffer.data[src + 1];
+      out.data[dst + 2] = buffer.data[src + 2];
+      out.data[dst + 3] = buffer.data[src + 3];
+    }
+  }
+  return out;
+}
+
+function resizeMaskNearest(mask, width, height, nextWidth, nextHeight) {
+  const out = new Uint8Array(nextWidth * nextHeight);
+  for (let y = 0; y < nextHeight; y += 1) {
+    for (let x = 0; x < nextWidth; x += 1) {
+      const srcX = Math.min(width - 1, Math.floor((x / Math.max(1, nextWidth)) * width));
+      const srcY = Math.min(height - 1, Math.floor((y / Math.max(1, nextHeight)) * height));
+      out[y * nextWidth + x] = mask[srcY * width + srcX] ?? 0;
+    }
+  }
+  return out;
+}
+
+function resizeProject(project, nextWidth, nextHeight) {
+  return {
+    ...project,
+    width: nextWidth,
+    height: nextHeight,
+    frames: project.frames.map((frame) => ({
+      ...frame,
+      cels: Object.fromEntries(
+        Object.entries(frame.cels).map(([layerId, cel]) => [layerId, {
+          ...cel,
+          pixelBuffer: resizePixelBufferNearest(cel.pixelBuffer, nextWidth, nextHeight)
+        }])
+      )
+    }))
+  };
+}
 const initialProject = createProject({
   width: 64,
   height: 64,
@@ -672,6 +755,32 @@ export function createWorkspacePolishPlan(state) {
 
 export function editorReducer(state, action) {
   switch (action.type) {
+    case 'project_resize': {
+      const width = Math.max(1, Number(action.width) || state.project.width);
+      const height = Math.max(1, Number(action.height) || state.project.height);
+      if (width === state.project.width && height === state.project.height) {
+        return state;
+      }
+      return {
+        ...state,
+        project: resizeProject(state.project, width, height),
+        selectionMask: null,
+        material: {
+          ...state.material,
+          emissiveMask: resizeMaskNearest(state.material.emissiveMask, state.project.width, state.project.height, width, height),
+          roughnessMask: resizeMaskNearest(state.material.roughnessMask, state.project.width, state.project.height, width, height),
+          metalnessMask: resizeMaskNearest(state.material.metalnessMask, state.project.width, state.project.height, width, height),
+          heightMask: resizeMaskNearest(state.material.heightMask, state.project.width, state.project.height, width, height)
+        },
+        lighting: {
+          ...state.lighting,
+          position: {
+            x: Math.round((state.lighting.position?.x ?? 0) * (width / Math.max(1, state.project.width))),
+            y: Math.round((state.lighting.position?.y ?? 0) * (height / Math.max(1, state.project.height)))
+          }
+        }
+      };
+    }
     case 'project_reset':
       return createDefaultState(state.history.budgetBytes);
     case 'hydrate_from_snapshot':
@@ -951,6 +1060,38 @@ export function editorReducer(state, action) {
       return { ...state, material: { ...state.material, normalStrength: action.value } };
     case 'material_set_paint_value':
       return { ...state, material: { ...state.material, [action.channel]: Math.max(0, Math.min(1, action.value ?? 0)) } };
+    case 'material_set_mask': {
+      const channel = action.channel;
+      if (!['emissiveMask', 'roughnessMask', 'metalnessMask', 'heightMask'].includes(channel)) {
+        return state;
+      }
+      const incoming = action.mask instanceof Uint8Array ? action.mask : new Uint8Array(action.mask ?? []);
+      const expectedSize = state.project.width * state.project.height;
+      if (incoming.length !== expectedSize) {
+        return state;
+      }
+      return {
+        ...state,
+        material: {
+          ...state.material,
+          [channel]: incoming
+        }
+      };
+    }
+    case 'material_adjust_mask': {
+      const channel = action.channel;
+      if (!['emissiveMask', 'roughnessMask', 'metalnessMask', 'heightMask'].includes(channel)) {
+        return state;
+      }
+      const mask = state.material[channel];
+      return {
+        ...state,
+        material: {
+          ...state.material,
+          [channel]: adjustMask(mask, action.operation)
+        }
+      };
+    }
     case 'material_generate_height_from_sprite':
       return {
         ...state,

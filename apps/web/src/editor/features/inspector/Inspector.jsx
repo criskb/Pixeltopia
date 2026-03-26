@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo, useRef } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Eye,
   EyeOff,
@@ -23,6 +23,7 @@ import {
   buildHeightTextureData,
   buildNormalTextureData
 } from '../shader/materialMaps';
+import ColorControls from './ColorControls';
 const ThreePreview = lazy(() => import('../shader/ThreePreview'));
 
 const swatches = ['#1D1D1D', '#FFFFFF', '#7C5CFF', '#00C2FF', '#37D67A', '#FFB020', '#FF5D73', '#8B5CF6'];
@@ -52,6 +53,9 @@ export default function Inspector() {
   const selectedBone = useMemo(() => rigging.bones.find((bone) => bone.id === (rigging.selectedBoneId ?? rigging.bones[0]?.id)), [rigging]);
   const selectedFrame = frames.find((frame) => frame.id === selectedFrameId) ?? frames[0];
   const hdriInputRef = useRef(null);
+  const materialMapInputRef = useRef(null);
+  const [pendingImportChannel, setPendingImportChannel] = useState(null);
+  const [resizeDraft, setResizeDraft] = useState({ width, height });
   const materialCoverage = useMemo(() => {
     const total = Math.max(1, width * height);
     const coverageOf = (mask) => {
@@ -65,6 +69,10 @@ export default function Inspector() {
       height: coverageOf(material.heightMask)
     };
   }, [material, width, height]);
+
+  useEffect(() => {
+    setResizeDraft({ width, height });
+  }, [width, height]);
 
   const loadHdri = async (file) => {
     try {
@@ -147,12 +155,54 @@ export default function Inspector() {
     });
   };
 
+  const importMaterialMask = async (file, channel) => {
+    const targetChannel = channel ?? pendingImportChannel;
+    if (!targetChannel) {
+      return;
+    }
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ''));
+      reader.onerror = () => reject(new Error('Failed to read mask image'));
+      reader.readAsDataURL(file);
+    });
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Failed to decode mask image'));
+      img.src = dataUrl;
+    });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return;
+    }
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(image, 0, 0, width, height);
+    const pixels = ctx.getImageData(0, 0, width, height).data;
+    const mask = new Uint8Array(width * height);
+    for (let i = 0; i < width * height; i += 1) {
+      const px = i * 4;
+      mask[i] = Math.round(0.2126 * pixels[px] + 0.7152 * pixels[px + 1] + 0.0722 * pixels[px + 2]);
+    }
+    dispatch({ type: 'material_set_mask', channel: targetChannel, mask });
+    setPendingImportChannel(null);
+  };
+
+  const adjustMaterialMask = (channel, operation) => {
+    dispatch({ type: 'material_adjust_mask', channel, operation });
+  };
+
   return (
     <aside className="inspector" aria-label="Inspector panels">
       {workspaceMode === 'draw' && (
         <>
           <section className="panel">
             <h2><Palette size={14} /> Palette</h2>
+            <ColorControls color={currentColor} onChange={(color) => dispatch({ type: 'set_color', color })} />
             <div className="swatch-grid">
               {swatches.map((color) => (
                 <button key={color} className={currentColor === color ? 'swatch selected' : 'swatch'} style={{ background: color }} onClick={() => dispatch({ type: 'set_color', color })} />
@@ -187,7 +237,17 @@ export default function Inspector() {
           <section className="panel">
             <h2><Repeat2 size={14} /> Draw Tools</h2>
             <label className="control-row" htmlFor="brushSize"><span>Brush</span><input id="brushSize" type="range" min="1" max="8" value={brushSize} onChange={(e) => dispatch({ type: 'set_brush_size', size: Number(e.target.value) })} /></label>
-            <div className="control-row"><span>Zoom</span><strong>{zoomLevel * 100}%</strong></div>
+            <div className="control-row">
+              <span>Zoom</span>
+              <div className="layer-actions">
+                <button onClick={() => dispatch({ type: 'set_zoom', zoom: Math.max(2, zoomLevel - 1) })}>-</button>
+                <strong>{zoomLevel * 100}%</strong>
+                <button onClick={() => dispatch({ type: 'set_zoom', zoom: Math.min(32, zoomLevel + 1) })}>+</button>
+              </div>
+            </div>
+            <label className="control-row"><span>Doc Width</span><input type="number" min="1" max="512" value={resizeDraft.width} onChange={(e) => setResizeDraft((prev) => ({ ...prev, width: Number(e.target.value) }))} /></label>
+            <label className="control-row"><span>Doc Height</span><input type="number" min="1" max="512" value={resizeDraft.height} onChange={(e) => setResizeDraft((prev) => ({ ...prev, height: Number(e.target.value) }))} /></label>
+            <button onClick={() => dispatch({ type: 'project_resize', width: resizeDraft.width, height: resizeDraft.height })}>Apply Canvas Resize</button>
             <p className="subhead">Painting tools enabled in this mode.</p>
           </section>
         </>
@@ -310,8 +370,40 @@ export default function Inspector() {
             <button onClick={() => downloadMaterialMap('normal')}>Export Normal</button>
             <button onClick={() => downloadMaterialMap('depth')}>Export Depth</button>
           </div>
+          <div className="layer-actions">
+            <button onClick={() => { setPendingImportChannel('roughnessMask'); materialMapInputRef.current?.click(); }}>Import Roughness</button>
+            <button onClick={() => { setPendingImportChannel('metalnessMask'); materialMapInputRef.current?.click(); }}>Import Metalness</button>
+            <button onClick={() => { setPendingImportChannel('heightMask'); materialMapInputRef.current?.click(); }}>Import Height</button>
+          </div>
+          <div className="layer-actions">
+            <button onClick={() => adjustMaterialMask('roughnessMask', 'invert')}>Invert Roughness</button>
+            <button onClick={() => adjustMaterialMask('metalnessMask', 'invert')}>Invert Metalness</button>
+            <button onClick={() => adjustMaterialMask('heightMask', 'invert')}>Invert Height</button>
+          </div>
+          <div className="layer-actions">
+            <button onClick={() => adjustMaterialMask('roughnessMask', 'normalize')}>Normalize Roughness</button>
+            <button onClick={() => adjustMaterialMask('metalnessMask', 'normalize')}>Normalize Metalness</button>
+            <button onClick={() => adjustMaterialMask('heightMask', 'normalize')}>Normalize Height</button>
+          </div>
           <p className="subhead">Coverage · Emissive {materialCoverage.emissive}% · Roughness {materialCoverage.roughness}% · Metalness {materialCoverage.metalness}% · Height {materialCoverage.height}%.</p>
           <p className="subhead">Lighting controls are now in this right inspector panel. Drag light in-canvas with the Light tool for direct placement. Active: {material.tool}. Normal/depth response is generated automatically from height + sprite data. {lighting.hdriName ? `HDRI: ${lighting.hdriName}` : 'No HDRI loaded.'}</p>
+          <input
+            ref={materialMapInputRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={async (event) => {
+              const [file] = event.target.files ?? [];
+              if (file) {
+                try {
+                  await importMaterialMask(file);
+                } catch {
+                  // ignore invalid mask imports
+                }
+              }
+              event.target.value = '';
+            }}
+          />
           <input
             ref={hdriInputRef}
             type="file"

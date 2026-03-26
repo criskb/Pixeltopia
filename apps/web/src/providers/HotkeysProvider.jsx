@@ -31,6 +31,14 @@ export default function HotkeysProvider({ children }) {
       if (!withMeta && mode === 'draw' && key === 'e') dispatch({ type: 'set_active_tool', tool: 'eraser' });
       if (!withMeta && mode === 'draw' && key === 'g') dispatch({ type: 'set_active_tool', tool: 'fill' });
       if (!withMeta && mode === 'draw' && key === 'i') dispatch({ type: 'set_active_tool', tool: 'picker' });
+      if (!withMeta && (key === '+' || key === '=')) {
+        const nextZoom = Math.min(32, (stateRef.current.zoomLevel ?? 8) + 1);
+        dispatch({ type: 'set_zoom', zoom: nextZoom });
+      }
+      if (!withMeta && key === '-') {
+        const nextZoom = Math.max(2, (stateRef.current.zoomLevel ?? 8) - 1);
+        dispatch({ type: 'set_zoom', zoom: nextZoom });
+      }
       if (!withMeta && mode === 'shader' && key === 'l') dispatch({ type: 'material_set_tool', tool: 'light' });
       if (!withMeta && mode === 'shader' && key === 'e') dispatch({ type: 'material_set_tool', tool: 'emissive' });
       if (!withMeta && mode === 'shader' && key === 'r') dispatch({ type: 'material_set_tool', tool: 'emissive-erase' });

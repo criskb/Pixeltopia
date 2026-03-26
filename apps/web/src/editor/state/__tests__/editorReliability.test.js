@@ -130,5 +130,26 @@ describe('editor reliability layer', () => {
 
     state = editorReducer(state, { type: 'material_apply_preset', preset: 'brushed_metal' });
     expect(state.material.metalnessStrength).toBeGreaterThan(0.8);
+
+    const importedMask = new Uint8Array(state.project.width * state.project.height);
+    importedMask[pixelIndex] = 222;
+    state = editorReducer(state, { type: 'material_set_mask', channel: 'roughnessMask', mask: importedMask });
+    expect(state.material.roughnessMask[pixelIndex]).toBe(222);
+
+    state = editorReducer(state, { type: 'material_adjust_mask', channel: 'roughnessMask', operation: 'invert' });
+    expect(state.material.roughnessMask[pixelIndex]).toBe(33);
+  });
+
+  it('resizes project document dimensions and preserves painted pixels', () => {
+    let state = freshState();
+    const drawBuffer = createPixelBuffer(state.project.width, state.project.height);
+    setPixel(drawBuffer, 0, 0, [255, 0, 255, 255]);
+    state = editorReducer(state, { type: 'update_pixels', pixelBuffer: drawBuffer });
+
+    state = editorReducer(state, { type: 'project_resize', width: 32, height: 32 });
+    expect(state.project.width).toBe(32);
+    expect(state.project.height).toBe(32);
+    const resizedCel = getSelectedCel(state.project);
+    expect(getPixel(resizedCel.pixelBuffer, 0, 0)).toEqual([255, 0, 255, 255]);
   });
 });
