@@ -97,7 +97,7 @@ export default function HotkeysProvider({ children }) {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [dispatch]);
+  }, [dispatch, state]);
 
   return children;
 }
