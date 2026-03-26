@@ -283,42 +283,90 @@ button:focus-visible {
 
 .color-controls {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 10px;
 }
 
 .color-primary-row {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto 1fr auto auto;
   gap: 8px;
   align-items: center;
 }
 
 .color-primary-row input[type='color'] {
-  width: 42px;
-  height: 30px;
+  width: 46px;
+  height: 34px;
   padding: 0;
-  border-radius: 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .hex-input {
   border: 1px solid var(--outline);
   border-radius: 8px;
-  padding: 4px 8px;
+  padding: 6px 10px;
   background: var(--bg-panel-alt);
   color: var(--text-primary);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.ghost-button {
+  padding: 7px 10px;
+  font-size: 12px;
+  border-color: var(--outline);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.commit-preview-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.commit-chip {
+  display: grid;
+  gap: 4px;
+}
+
+.commit-chip span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.commit-swatch {
+  width: 100%;
+  justify-content: center;
+  min-height: 30px;
+  border-radius: 8px;
+  border-color: rgba(255, 255, 255, 0.2);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--swatch), #ffffff 8%), var(--swatch));
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.commit-swatch-last {
+  opacity: 0.9;
 }
 
 .wheel-layout {
   display: grid;
-  grid-template-columns: 148px 1fr;
+  grid-template-columns: 170px 1fr;
   gap: 12px;
   align-items: center;
 }
 
 .hue-wheel {
-  width: 148px;
-  height: 148px;
+  width: 170px;
+  height: 170px;
   border-radius: 50%;
   background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);
   position: relative;
@@ -330,7 +378,7 @@ button:focus-visible {
 .hue-wheel::after {
   content: '';
   position: absolute;
-  inset: 30px;
+  inset: 41px;
   border-radius: 50%;
   background: var(--bg-panel);
 }
@@ -352,7 +400,7 @@ button:focus-visible {
 }
 
 .sv-box {
-  height: 148px;
+  height: 170px;
   border-radius: 8px;
   border: 1px solid var(--outline);
   position: relative;
@@ -377,15 +425,43 @@ button:focus-visible {
 .mini-swatches {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: auto;
   gap: 6px;
+  align-items: center;
+}
+
+.swatch-section-title {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.mini-clear {
+  grid-column: span 2;
+  justify-self: end;
+  min-height: 20px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.swatch-empty {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.85;
 }
 
 .mini-swatch {
   width: 100%;
-  height: 18px;
+  height: 24px;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   padding: 0;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
 }
 
 .swatch {
@@ -439,6 +515,14 @@ button:focus-visible {
   align-items: center;
   gap: 8px;
   margin-bottom: 6px;
+}
+
+.control-row strong {
+  min-width: 42px;
+  text-align: right;
+  color: var(--text-primary);
+  font-size: 11px;
+  letter-spacing: 0.02em;
 }
 
 .control-row + .control-row {

@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+const COLOR_CONTROLS_STORAGE_KEY = 'pixeltopia:color-controls:v2';
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -19,6 +21,18 @@ function hexToRgb(hex) {
 function rgbToHex(r, g, b) {
   const toHex = (value) => clamp(Math.round(value), 0, 255).toString(16).padStart(2, '0');
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function normalizeHex(value) {
+  const raw = String(value ?? '').trim().replace(/^#/, '').replace(/[^0-9a-f]/gi, '');
+  if (!raw) return null;
+  if (raw.length === 3) {
+    return `#${raw.split('').map((char) => char + char).join('').toUpperCase()}`;
+  }
+  if (raw.length >= 6) {
+    return `#${raw.slice(0, 6).toUpperCase()}`;
+  }
+  return null;
 }
 
 function rgbToHsv(r, g, b) {
@@ -104,21 +118,84 @@ function hslToRgb(h, s, l) {
 export default function ColorControls({ color, onChange }) {
   const [mode, setMode] = useState('wheel');
   const [recentColors, setRecentColors] = useState([]);
+  const [hexDraft, setHexDraft] = useState(color);
+  const [lastCommittedColor, setLastCommittedColor] = useState(color.toUpperCase());
+  const lastCommittedRef = useRef('');
   const rgb = useMemo(() => hexToRgb(color), [color]);
   const hsv = useMemo(() => rgbToHsv(rgb.r, rgb.g, rgb.b), [rgb]);
   const hsl = useMemo(() => rgbToHsl(rgb.r, rgb.g, rgb.b), [rgb]);
 
+  useEffect(() => {
+    setHexDraft(color.toUpperCase());
+  }, [color]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      const saved = window.localStorage.getItem(COLOR_CONTROLS_STORAGE_KEY);
+      if (!saved) {
+        return;
+      }
+      const parsed = JSON.parse(saved);
+      if (typeof parsed?.mode === 'string') {
+        setMode(parsed.mode);
+      }
+      if (Array.isArray(parsed?.recentColors)) {
+        const sanitized = parsed.recentColors
+          .map((value) => normalizeHex(value))
+          .filter(Boolean)
+          .slice(0, 8);
+        setRecentColors(sanitized);
+      }
+    } catch {
+      // Ignore invalid persisted values.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        COLOR_CONTROLS_STORAGE_KEY,
+        JSON.stringify({ mode, recentColors })
+      );
+    } catch {
+      // Ignore write failures (private mode, quota, etc).
+    }
+  }, [mode, recentColors]);
+
+  useEffect(() => {
+    const normalized = normalizeHex(color);
+    if (normalized) {
+      setLastCommittedColor((prev) => (prev === normalized ? prev : normalized));
+    }
+  }, [color]);
+
   const pushRecentColor = (value) => {
+    const normalized = normalizeHex(value);
+    if (!normalized || normalized === lastCommittedRef.current) {
+      return;
+    }
+    lastCommittedRef.current = normalized;
     setRecentColors((prev) => {
-      const deduped = [value, ...prev.filter((item) => item.toLowerCase() !== value.toLowerCase())];
+      const deduped = [normalized, ...prev.filter((item) => item.toLowerCase() !== normalized.toLowerCase())];
       return deduped.slice(0, 8);
     });
   };
 
   const applyColor = (nextColor, commit = false) => {
-    onChange(nextColor);
+    const normalized = normalizeHex(nextColor);
+    if (!normalized) {
+      return;
+    }
+    onChange(normalized);
     if (commit) {
-      pushRecentColor(nextColor);
+      setLastCommittedColor(normalized);
+      pushRecentColor(normalized);
     }
   };
 
@@ -133,6 +210,12 @@ export default function ColorControls({ color, onChange }) {
     const cy = rect.top + rect.height / 2;
     const dx = event.clientX - cx;
     const dy = event.clientY - cy;
+    const distance = Math.hypot(dx, dy);
+    const outerRadius = rect.width * 0.5;
+    const innerRadius = rect.width * 0.24;
+    if (distance < innerRadius || distance > outerRadius) {
+      return;
+    }
     const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
     const hue = (angle + 360) % 360;
     commitHsv(hue, hsv.s, hsv.v);
@@ -166,13 +249,47 @@ export default function ColorControls({ color, onChange }) {
       </label>
 
       <div className="color-primary-row">
-        <input type="color" value={color} onChange={(event) => applyColor(event.target.value, true)} />
+        <input type="color" value={color} onChange={(event) => applyColor(event.target.value, true)} aria-label="Color picker" />
         <input
           className="hex-input"
-          value={color}
-          onChange={(event) => applyColor(event.target.value.startsWith('#') ? event.target.value : `#${event.target.value}`)}
-          onBlur={(event) => applyColor(event.target.value.startsWith('#') ? event.target.value : `#${event.target.value}`, true)}
+          value={hexDraft}
+          onChange={(event) => setHexDraft(event.target.value.toUpperCase())}
+          onBlur={(event) => {
+            const normalized = normalizeHex(event.target.value) ?? color;
+            setHexDraft(normalized);
+            applyColor(normalized, true);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              const normalized = normalizeHex(hexDraft) ?? color;
+              setHexDraft(normalized);
+              applyColor(normalized, true);
+              event.currentTarget.blur();
+            }
+          }}
+          aria-label="Hex color"
         />
+        <button className="ghost-button" type="button" onClick={() => applyColor(lastCommittedColor, true)} title="Revert to last committed color">
+          Revert
+        </button>
+        <button className="ghost-button" type="button" onClick={() => navigator.clipboard?.writeText(color.toUpperCase())} title="Copy current hex">
+          Copy
+        </button>
+      </div>
+
+      <div className="commit-preview-row" aria-label="Color commit preview">
+        <div className="commit-chip">
+          <span>Current</span>
+          <button type="button" className="commit-swatch" style={{ '--swatch': color }} onClick={() => applyColor(color, true)}>
+            {color.toUpperCase()}
+          </button>
+        </div>
+        <div className="commit-chip">
+          <span>Last Set</span>
+          <button type="button" className="commit-swatch commit-swatch-last" style={{ '--swatch': lastCommittedColor }} onClick={() => applyColor(lastCommittedColor, true)}>
+            {lastCommittedColor}
+          </button>
+        </div>
       </div>
 
       {mode === 'wheel' && (
@@ -183,7 +300,7 @@ export default function ColorControls({ color, onChange }) {
             onPointerMove={(event) => event.buttons === 1 && onWheelPointer(event)}
             onPointerUp={() => pushRecentColor(color)}
           >
-            <div className="wheel-indicator" style={{ transform: `rotate(${hsv.h}deg) translateX(54px)` }} />
+            <div className="wheel-indicator" style={{ transform: `rotate(${hsv.h}deg) translateX(63px)` }} />
           </div>
           <div
             className="sv-box"
@@ -199,17 +316,17 @@ export default function ColorControls({ color, onChange }) {
 
       {mode === 'rgb' && (
         <>
-          <label className="control-row"><span>R</span><input type="range" min="0" max="255" value={rgb.r} onChange={(event) => applyColor(rgbToHex(Number(event.target.value), rgb.g, rgb.b))} onPointerUp={() => pushRecentColor(color)} /></label>
-          <label className="control-row"><span>G</span><input type="range" min="0" max="255" value={rgb.g} onChange={(event) => applyColor(rgbToHex(rgb.r, Number(event.target.value), rgb.b))} onPointerUp={() => pushRecentColor(color)} /></label>
-          <label className="control-row"><span>B</span><input type="range" min="0" max="255" value={rgb.b} onChange={(event) => applyColor(rgbToHex(rgb.r, rgb.g, Number(event.target.value)))} onPointerUp={() => pushRecentColor(color)} /></label>
+          <label className="control-row"><span>R</span><input type="range" min="0" max="255" value={rgb.r} onChange={(event) => applyColor(rgbToHex(Number(event.target.value), rgb.g, rgb.b))} onPointerUp={() => pushRecentColor(color)} /><strong>{rgb.r}</strong></label>
+          <label className="control-row"><span>G</span><input type="range" min="0" max="255" value={rgb.g} onChange={(event) => applyColor(rgbToHex(rgb.r, Number(event.target.value), rgb.b))} onPointerUp={() => pushRecentColor(color)} /><strong>{rgb.g}</strong></label>
+          <label className="control-row"><span>B</span><input type="range" min="0" max="255" value={rgb.b} onChange={(event) => applyColor(rgbToHex(rgb.r, rgb.g, Number(event.target.value)))} onPointerUp={() => pushRecentColor(color)} /><strong>{rgb.b}</strong></label>
         </>
       )}
 
       {mode === 'hsv' && (
         <>
-          <label className="control-row"><span>H</span><input type="range" min="0" max="360" value={hsv.h} onChange={(event) => commitHsv(Number(event.target.value), hsv.s, hsv.v)} onPointerUp={() => pushRecentColor(color)} /></label>
-          <label className="control-row"><span>S</span><input type="range" min="0" max="100" value={Math.round(hsv.s * 100)} onChange={(event) => commitHsv(hsv.h, Number(event.target.value) / 100, hsv.v)} onPointerUp={() => pushRecentColor(color)} /></label>
-          <label className="control-row"><span>V</span><input type="range" min="0" max="100" value={Math.round(hsv.v * 100)} onChange={(event) => commitHsv(hsv.h, hsv.s, Number(event.target.value) / 100)} onPointerUp={() => pushRecentColor(color)} /></label>
+          <label className="control-row"><span>H</span><input type="range" min="0" max="360" value={hsv.h} onChange={(event) => commitHsv(Number(event.target.value), hsv.s, hsv.v)} onPointerUp={() => pushRecentColor(color)} /><strong>{Math.round(hsv.h)}°</strong></label>
+          <label className="control-row"><span>S</span><input type="range" min="0" max="100" value={Math.round(hsv.s * 100)} onChange={(event) => commitHsv(hsv.h, Number(event.target.value) / 100, hsv.v)} onPointerUp={() => pushRecentColor(color)} /><strong>{Math.round(hsv.s * 100)}%</strong></label>
+          <label className="control-row"><span>V</span><input type="range" min="0" max="100" value={Math.round(hsv.v * 100)} onChange={(event) => commitHsv(hsv.h, hsv.s, Number(event.target.value) / 100)} onPointerUp={() => pushRecentColor(color)} /><strong>{Math.round(hsv.v * 100)}%</strong></label>
         </>
       )}
 
@@ -218,24 +335,32 @@ export default function ColorControls({ color, onChange }) {
           <label className="control-row"><span>H</span><input type="range" min="0" max="360" value={hsl.h} onChange={(event) => {
             const next = hslToRgb(Number(event.target.value), hsl.s, hsl.l);
             onChange(rgbToHex(next.r, next.g, next.b));
-          }} onPointerUp={() => pushRecentColor(color)} /></label>
+          }} onPointerUp={() => pushRecentColor(color)} /><strong>{Math.round(hsl.h)}°</strong></label>
           <label className="control-row"><span>S</span><input type="range" min="0" max="100" value={Math.round(hsl.s * 100)} onChange={(event) => {
             const next = hslToRgb(hsl.h, Number(event.target.value) / 100, hsl.l);
             onChange(rgbToHex(next.r, next.g, next.b));
-          }} onPointerUp={() => pushRecentColor(color)} /></label>
+          }} onPointerUp={() => pushRecentColor(color)} /><strong>{Math.round(hsl.s * 100)}%</strong></label>
           <label className="control-row"><span>L</span><input type="range" min="0" max="100" value={Math.round(hsl.l * 100)} onChange={(event) => {
             const next = hslToRgb(hsl.h, hsl.s, Number(event.target.value) / 100);
             onChange(rgbToHex(next.r, next.g, next.b));
-          }} onPointerUp={() => pushRecentColor(color)} /></label>
+          }} onPointerUp={() => pushRecentColor(color)} /><strong>{Math.round(hsl.l * 100)}%</strong></label>
         </>
       )}
 
       <div className="mini-swatches">
+        <span className="swatch-section-title">Harmony</span>
         {harmony.map((value) => (
           <button key={`h-${value}`} className="mini-swatch" style={{ background: value }} onClick={() => applyColor(value, true)} title={`Harmony ${value}`} />
         ))}
       </div>
       <div className="mini-swatches">
+        <span className="swatch-section-title">Recent</span>
+        {recentColors.length > 0 && (
+          <button className="mini-clear" type="button" onClick={() => setRecentColors([])}>
+            Clear
+          </button>
+        )}
+        {recentColors.length === 0 && <span className="swatch-empty">No committed colors yet</span>}
         {recentColors.map((value) => (
           <button key={`r-${value}`} className="mini-swatch" style={{ background: value }} onClick={() => applyColor(value, true)} title={`Recent ${value}`} />
         ))}
