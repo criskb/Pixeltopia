@@ -77,6 +77,7 @@ button:focus-visible {
   border: 1px solid var(--outline);
   border-radius: 14px;
   box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(14px);
 }
 
 .topbar h1 {
@@ -99,6 +100,12 @@ button:focus-visible {
 
 .topbar-actions button {
   padding: 8px 12px;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.topbar-actions button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.22);
 }
 
 .topbar-actions .primary {
@@ -274,6 +281,113 @@ button:focus-visible {
   gap: 8px;
 }
 
+.color-controls {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.color-primary-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.color-primary-row input[type='color'] {
+  width: 42px;
+  height: 30px;
+  padding: 0;
+  border-radius: 6px;
+}
+
+.hex-input {
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  padding: 4px 8px;
+  background: var(--bg-panel-alt);
+  color: var(--text-primary);
+}
+
+.wheel-layout {
+  display: grid;
+  grid-template-columns: 148px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.hue-wheel {
+  width: 148px;
+  height: 148px;
+  border-radius: 50%;
+  background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);
+  position: relative;
+  border: 1px solid var(--outline);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), 0 8px 18px rgba(0,0,0,0.35);
+  cursor: crosshair;
+}
+
+.hue-wheel::after {
+  content: '';
+  position: absolute;
+  inset: 30px;
+  border-radius: 50%;
+  background: var(--bg-panel);
+}
+
+.wheel-indicator {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid #111;
+  transform-origin: 0 0;
+  z-index: 2;
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.35);
+}
+
+.sv-box {
+  height: 148px;
+  border-radius: 8px;
+  border: 1px solid var(--outline);
+  position: relative;
+  background:
+    linear-gradient(to top, black, transparent),
+    linear-gradient(to right, white, hsl(var(--hue) 100% 50%));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1), 0 8px 18px rgba(0,0,0,0.25);
+  cursor: crosshair;
+}
+
+.sv-indicator {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  margin-top: -5px;
+  border-radius: 50%;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.mini-swatches {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+}
+
+.mini-swatch {
+  width: 100%;
+  height: 18px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  padding: 0;
+}
+
 .swatch {
   width: 100%;
   height: 30px;
@@ -341,6 +455,11 @@ button:focus-visible {
   flex-direction: column;
   gap: 10px;
   padding: 10px 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0)),
+    radial-gradient(circle at 20% -30%, rgba(124, 92, 255, 0.24), transparent 60%),
+    radial-gradient(circle at 80% -40%, rgba(0, 194, 255, 0.2), transparent 55%),
+    var(--bg-panel);
 }
 
 .timeline-header {
@@ -368,15 +487,60 @@ button:focus-visible {
   display: flex;
   gap: 8px;
   overflow: auto;
+  padding-bottom: 4px;
+}
+
+.timeline-scrubber {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.timeline-scrubber label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.timeline-scrubber input[type="range"] {
+  width: 100%;
+}
+
+.timeline-ruler {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(10px, 1fr);
+  gap: 6px;
+}
+
+.timeline-ruler .tick {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.timeline-ruler .tick.active {
+  background: linear-gradient(120deg, var(--accent-primary), var(--accent-secondary));
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
 
 .frame {
   min-width: 62px;
-  padding: 8px 0;
+  padding: 8px 6px;
   justify-content: center;
   gap: 2px;
   flex-direction: column;
   background: var(--timeline-idle);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: transform 100ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.frame:hover {
+  transform: translateY(-1px);
+  border-color: rgba(94, 193, 255, 0.7);
 }
 
 .frame small {
