@@ -118,6 +118,7 @@ function hslToRgb(h, s, l) {
 export default function ColorControls({ color, onChange }) {
   const [mode, setMode] = useState('wheel');
   const [recentColors, setRecentColors] = useState([]);
+  const [favoriteColors, setFavoriteColors] = useState([]);
   const [hexDraft, setHexDraft] = useState(color);
   const [lastCommittedColor, setLastCommittedColor] = useState(color.toUpperCase());
   const lastCommittedRef = useRef('');
@@ -149,6 +150,13 @@ export default function ColorControls({ color, onChange }) {
           .slice(0, 8);
         setRecentColors(sanitized);
       }
+      if (Array.isArray(parsed?.favoriteColors)) {
+        const favorites = parsed.favoriteColors
+          .map((value) => normalizeHex(value))
+          .filter(Boolean)
+          .slice(0, 12);
+        setFavoriteColors(favorites);
+      }
     } catch {
       // Ignore invalid persisted values.
     }
@@ -161,12 +169,12 @@ export default function ColorControls({ color, onChange }) {
     try {
       window.localStorage.setItem(
         COLOR_CONTROLS_STORAGE_KEY,
-        JSON.stringify({ mode, recentColors })
+        JSON.stringify({ mode, recentColors, favoriteColors })
       );
     } catch {
       // Ignore write failures (private mode, quota, etc).
     }
-  }, [mode, recentColors]);
+  }, [mode, recentColors, favoriteColors]);
 
   useEffect(() => {
     const normalized = normalizeHex(color);
@@ -236,6 +244,22 @@ export default function ColorControls({ color, onChange }) {
     });
   }, [hsv]);
 
+  const isCurrentFavorite = favoriteColors.some((value) => value.toLowerCase() === color.toLowerCase());
+
+  const toggleFavoriteColor = (value) => {
+    const normalized = normalizeHex(value);
+    if (!normalized) {
+      return;
+    }
+    setFavoriteColors((prev) => {
+      const exists = prev.some((item) => item.toLowerCase() === normalized.toLowerCase());
+      if (exists) {
+        return prev.filter((item) => item.toLowerCase() !== normalized.toLowerCase());
+      }
+      return [normalized, ...prev].slice(0, 12);
+    });
+  };
+
   return (
     <div className="color-controls">
       <label className="control-row">
@@ -274,6 +298,9 @@ export default function ColorControls({ color, onChange }) {
         </button>
         <button className="ghost-button" type="button" onClick={() => navigator.clipboard?.writeText(color.toUpperCase())} title="Copy current hex">
           Copy
+        </button>
+        <button className={`ghost-button ${isCurrentFavorite ? 'is-active' : ''}`} type="button" onClick={() => toggleFavoriteColor(color)} title="Toggle favorite color">
+          {isCurrentFavorite ? '★ Saved' : '☆ Save'}
         </button>
       </div>
 
@@ -347,6 +374,23 @@ export default function ColorControls({ color, onChange }) {
         </>
       )}
 
+      <div className="mini-swatches">
+        <span className="swatch-section-title">Favorites</span>
+        {favoriteColors.length === 0 && <span className="swatch-empty">Save favorites for quick reuse</span>}
+        {favoriteColors.map((value) => (
+          <button
+            key={`f-${value}`}
+            className="mini-swatch favorite-swatch"
+            style={{ background: value }}
+            onClick={() => applyColor(value, true)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              toggleFavoriteColor(value);
+            }}
+            title={`Favorite ${value} (right-click to remove)`}
+          />
+        ))}
+      </div>
       <div className="mini-swatches">
         <span className="swatch-section-title">Harmony</span>
         {harmony.map((value) => (
