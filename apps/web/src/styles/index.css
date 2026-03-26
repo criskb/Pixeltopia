@@ -280,6 +280,7 @@ button:focus-visible {
   border: 1px solid var(--outline);
   border-radius: 10px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 20px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
 }
 
 .panel h2 {
@@ -300,16 +301,19 @@ button:focus-visible {
   display: grid;
   gap: 10px;
   margin-bottom: 10px;
+  min-width: 0;
 }
 
 .color-primary-row {
-  display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+  min-width: 0;
 }
 
 .color-primary-row input[type='color'] {
+  flex: 0 0 auto;
   width: 46px;
   height: 34px;
   padding: 0;
@@ -319,6 +323,8 @@ button:focus-visible {
 }
 
 .hex-input {
+  flex: 1 1 140px;
+  min-width: 0;
   border: 1px solid var(--outline);
   border-radius: 8px;
   padding: 6px 10px;
@@ -329,6 +335,7 @@ button:focus-visible {
 }
 
 .ghost-button {
+  flex: 0 0 auto;
   padding: 7px 10px;
   font-size: 12px;
   border-color: var(--outline);
@@ -337,8 +344,9 @@ button:focus-visible {
 
 .commit-preview-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
   gap: 8px;
+  min-width: 0;
 }
 
 .commit-chip {
@@ -374,14 +382,18 @@ button:focus-visible {
 
 .wheel-layout {
   display: grid;
-  grid-template-columns: 170px 1fr;
+  grid-template-columns: repeat(2, minmax(112px, 1fr));
   gap: 12px;
-  align-items: center;
+  align-items: stretch;
+  min-width: 0;
 }
 
 .hue-wheel {
-  width: 170px;
-  height: 170px;
+  --wheel-indicator-radius: calc(50% - 22px);
+  width: min(170px, 100%);
+  aspect-ratio: 1 / 1;
+  height: auto;
+  justify-self: center;
   border-radius: 50%;
   background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);
   position: relative;
@@ -415,7 +427,9 @@ button:focus-visible {
 }
 
 .sv-box {
-  height: 170px;
+  height: auto;
+  min-height: 120px;
+  aspect-ratio: 1 / 1;
   border-radius: 8px;
   border: 1px solid var(--outline);
   position: relative;
@@ -439,7 +453,7 @@ button:focus-visible {
 
 .mini-swatches {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(38px, 1fr));
   grid-template-rows: auto;
   gap: 6px;
   align-items: center;
@@ -454,13 +468,24 @@ button:focus-visible {
 }
 
 .mini-clear {
-  grid-column: span 2;
+  grid-column: 1 / -1;
   justify-self: end;
   min-height: 20px;
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 10px;
   border-color: rgba(255, 255, 255, 0.2);
+}
+
+@media (max-width: 1440px) {
+  .wheel-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sv-box {
+    max-width: 220px;
+    justify-self: center;
+  }
 }
 
 .swatch-empty {

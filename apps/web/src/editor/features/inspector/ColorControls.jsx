@@ -300,7 +300,7 @@ export default function ColorControls({ color, onChange }) {
             onPointerMove={(event) => event.buttons === 1 && onWheelPointer(event)}
             onPointerUp={() => pushRecentColor(color)}
           >
-            <div className="wheel-indicator" style={{ transform: `rotate(${hsv.h}deg) translateX(63px)` }} />
+            <div className="wheel-indicator" style={{ transform: `rotate(${hsv.h}deg) translateX(var(--wheel-indicator-radius))` }} />
           </div>
           <div
             className="sv-box"
