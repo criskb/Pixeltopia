@@ -198,6 +198,13 @@ export default function CanvasViewport() {
   const [isLightDragging, setIsLightDragging] = useState(false);
   const [overlayMetrics, setOverlayMetrics] = useState({ left: 0, top: 0, width: 0, height: 0 });
 
+  const getMaterialPaintValue = () => {
+    if (material.tool.startsWith('roughness')) return material.roughnessPaintValue ?? 0.7;
+    if (material.tool.startsWith('metalness')) return material.metalnessPaintValue ?? 0.65;
+    if (material.tool.startsWith('height')) return material.heightPaintValue ?? 0.5;
+    return material.emissivePaintValue ?? 1;
+  };
+
   const selectionBounds = useMemo(() => getSelectionBounds(selectionMask), [selectionMask]);
 
   useEffect(() => {
@@ -232,7 +239,13 @@ export default function CanvasViewport() {
     if (workspaceMode === 'shader' && material.tool !== 'light') {
       const canvas = canvasRef.current;
       const { x, y } = getCanvasPixel(event, canvas, zoomLevel, wrapPreviewEnabled, width, height);
-      dispatch({ type: material.tool.endsWith('-erase') ? 'material_erase' : 'material_paint', x, y, radius: 1 });
+      dispatch({
+        type: material.tool.endsWith('-erase') ? 'material_erase' : 'material_paint',
+        x,
+        y,
+        radius: material.brushRadius ?? 1,
+        value: getMaterialPaintValue()
+      });
       return;
     }
 
@@ -294,7 +307,13 @@ export default function CanvasViewport() {
             return;
           }
           if (workspaceMode === 'shader' && material.tool !== 'light') {
-            dispatch({ type: material.tool.endsWith('-erase') ? 'material_erase' : 'material_paint', x, y, radius: 1 });
+            dispatch({
+              type: material.tool.endsWith('-erase') ? 'material_erase' : 'material_paint',
+              x,
+              y,
+              radius: material.brushRadius ?? 1,
+              value: getMaterialPaintValue()
+            });
             return;
           }
 
@@ -346,7 +365,13 @@ export default function CanvasViewport() {
             return;
           }
           if (workspaceMode === 'shader' && isDrawing && material.tool !== 'light') {
-            dispatch({ type: material.tool.endsWith('-erase') ? 'material_erase' : 'material_paint', x: point.x, y: point.y, radius: 1 });
+            dispatch({
+              type: material.tool.endsWith('-erase') ? 'material_erase' : 'material_paint',
+              x: point.x,
+              y: point.y,
+              radius: material.brushRadius ?? 1,
+              value: getMaterialPaintValue()
+            });
             return;
           }
 
@@ -388,7 +413,13 @@ export default function CanvasViewport() {
             return;
           }
           if (workspaceMode === 'shader' && material.tool !== 'light') {
-            dispatch({ type: material.tool.endsWith('-erase') ? 'material_erase' : 'material_paint', x: point.x, y: point.y, radius: 1 });
+            dispatch({
+              type: material.tool.endsWith('-erase') ? 'material_erase' : 'material_paint',
+              x: point.x,
+              y: point.y,
+              radius: material.brushRadius ?? 1,
+              value: getMaterialPaintValue()
+            });
             setIsDrawing(false);
             return;
           }
